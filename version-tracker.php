@@ -70,6 +70,9 @@ function check_versions() {
     compare_and_update_versions('core', ['WordPress' => $core_version]);
     compare_and_update_versions('plugin', $plugins_versions);
     compare_and_update_versions('theme', $themes_versions);
+    
+    mark_removed_items('plugin', array_keys($plugins_versions));
+    mark_removed_items('theme', array_keys($themes_versions));
 }
 
 function get_core_version() {
@@ -133,6 +136,29 @@ function compare_and_update_versions($type, $current_items) {
             log_version_change($type, $name, $version, 'current');
         }
     }
+}
+
+function mark_removed_items($type, $current_items) {
+    global $wpdb;
+    
+    $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
+    
+    $current_items_sql = implode(',', array_map(function($item) {
+        return "'" . esc_sql($item) . "'";
+    }, $current_items));
+    
+    if (empty($current_items)) {
+        $query = $wpdb->prepare(
+            "UPDATE $table_name SET state = %s WHERE type = %s AND state = %s",
+            'removed',
+            $type,
+            'current'
+        );
+    } else {
+        $query = "UPDATE $table_name SET state = 'removed' WHERE type = '" . esc_sql($type) . "' AND state = 'current' AND name NOT IN ($current_items_sql)";
+    }
+    
+    $wpdb->query($query);
 }
 
 function log_version_change($type, $name, $version, $state) {
