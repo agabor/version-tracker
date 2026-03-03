@@ -22,6 +22,8 @@ register_activation_hook(__FILE__, 'activate_version_tracker');
 register_deactivation_hook(__FILE__, 'deactivate_version_tracker');
 
 add_action(VERSION_TRACKER_CRON_HOOK, 'check_versions');
+add_action('admin_menu', 'version_tracker_add_admin_menu');
+add_action('admin_enqueue_scripts', 'version_tracker_enqueue_admin_assets');
 
 function activate_version_tracker() {
     global $wpdb;
@@ -150,3 +152,135 @@ function log_version_change($type, $name, $version, $state) {
         ['%s', '%s', '%s', '%s', '%s']
     );
 }
+
+function version_tracker_add_admin_menu() {
+    add_menu_page(
+        'Version Tracker',
+        'Version Tracker',
+        'manage_options',
+        'version-tracker',
+        'version_tracker_admin_page',
+        'dashicons-update'
+    );
+}
+
+function version_tracker_enqueue_admin_assets($hook) {
+    if ($hook !== 'toplevel_page_version-tracker') {
+        return;
+    }
+    
+    wp_enqueue_script('jquery-ui-datepicker');
+    wp_enqueue_style('jquery-ui-datepicker');
+    
+    wp_enqueue_style(
+        'version-tracker-admin',
+        plugins_url('css/admin.css', __FILE__),
+        [],
+        '1.0.0'
+    );
+    
+    wp_enqueue_script(
+        'version-tracker-admin',
+        plugins_url('js/admin.js', __FILE__),
+        ['jquery', 'jquery-ui-datepicker'],
+        '1.0.0',
+        true
+    );
+    
+    wp_localize_script('version-tracker-admin', 'versionTrackerAdmin', [
+        'ajaxurl' => admin_url('admin-ajax.php'),
+        'todayDate' => current_time('Y-m-d')
+    ]);
+}
+
+function version_tracker_admin_page() {
+    if (!current_user_can('manage_options')) {
+        wp_die(__('You do not have sufficient permissions to access this page.'));
+    }
+    
+    $selected_date = isset($_GET['vt_date']) ? sanitize_text_field($_GET['vt_date']) : current_time('Y-m-d');
+    
+    ?>
+    <div class="wrap">
+        <h1>Version Tracker</h1>
+        
+        <div class="vt-date-picker-container">
+            <label for="vt-date-picker">Select Date:</label>
+            <input type="text" id="vt-date-picker" name="vt_date" value="<?php echo esc_attr($selected_date); ?>" />
+            <button type="button" id="vt-filter-btn" class="button button-primary">Filter</button>
+        </div>
+        
+        <div id="vt-versions-container">
+            <?php version_tracker_display_versions($selected_date); ?>
+        </div>
+    </div>
+    <?php
+}
+
+function version_tracker_display_versions($date) {
+    global $wpdb;
+    
+    $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
+    
+    $results = $wpdb->get_results($wpdb->prepare(
+        "SELECT * FROM $table_name WHERE DATE(created_at) = %s ORDER BY type, name, created_at DESC",
+        $date
+    ));
+    
+    if (empty($results)) {
+        echo '<p>No version records found for ' . esc_html($date) . '</p>';
+        return;
+    }
+    
+    $grouped = [];
+    foreach ($results as $record) {
+        if (!isset($grouped[$record->type])) {
+            $grouped[$record->type] = [];
+        }
+        $grouped[$record->type][] = $record;
+    }
+    
+    ?>
+    <div class="vt-results">
+        <?php foreach ($grouped as $type => $records): ?>
+            <div class="vt-type-section">
+                <h2><?php echo esc_html(ucfirst($type)); ?>s</h2>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Version</th>
+                            <th>State</th>
+                            <th>Recorded At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($records as $record): ?>
+                            <tr class="state-<?php echo esc_attr($record->state); ?>">
+                                <td><?php echo esc_html($record->name); ?></td>
+                                <td><?php echo esc_html($record->version); ?></td>
+                                <td><span class="vt-state-badge state-<?php echo esc_attr($record->state); ?>"><?php echo esc_html(ucfirst($record->state)); ?></span></td>
+                                <td><?php echo esc_html($record->created_at); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endforeach; ?>
+    </div>
+    <?php
+}
+
+add_action('wp_ajax_version_tracker_get_versions', function() {
+    if (!current_user_can('manage_options')) {
+        wp_die(json_encode(['error' => 'Unauthorized']));
+    }
+    
+    $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : current_time('Y-m-d');
+    
+    ob_start();
+    version_tracker_display_versions($date);
+    $html = ob_get_clean();
+    
+    wp_die(json_encode(['html' => $html]));
+});

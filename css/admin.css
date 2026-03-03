@@ -1,0 +1,61 @@
+.vt-date-picker-container {
+    margin: 20px 0;
+    padding: 15px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.vt-date-picker-container label {
+    margin-right: 10px;
+    font-weight: 600;
+}
+
+#vt-date-picker {
+    padding: 6px 10px;
+    margin-right: 10px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    font-size: 14px;
+    min-width: 150px;
+}
+
+#vt-filter-btn {
+    margin-left: 5px;
+}
+
+.vt-results {
+    margin-top: 20px;
+}
+
+.vt-type-section {
+    margin-bottom: 30px;
+}
+
+.vt-type-section h2 {
+    margin-top: 0;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #0073aa;
+}
+
+.vt-state-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.vt-state-badge.state-current {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.vt-state-badge.state-old {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+tr.state-old {
+    background-color: #fff5f5;
+}
