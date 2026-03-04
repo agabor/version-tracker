@@ -268,7 +268,8 @@ function version_tracker_enqueue_admin_assets($hook) {
         'ajaxurl' => admin_url('admin-ajax.php'),
         'getVersionsAction' => 'version_tracker_get_versions',
         'createCheckpointAction' => 'version_tracker_create_checkpoint',
-        'deleteCheckpointAction' => 'version_tracker_delete_last_checkpoint'
+        'deleteCheckpointAction' => 'version_tracker_delete_last_checkpoint',
+        'manualCheckAction' => 'version_tracker_manual_check'
     ]);
 }
 
@@ -294,6 +295,7 @@ function version_tracker_admin_page() {
                 <?php endforeach; ?>
             </select>
             <button type="button" id="vt-filter-btn" class="button button-primary">Show Changes</button>
+            <button type="button" id="vt-manual-check-btn" class="button button-secondary">Check Now</button>
             <button type="button" id="vt-create-checkpoint-btn" class="button button-secondary">Create Checkpoint</button>
             <button type="button" id="vt-delete-checkpoint-btn" class="button button-danger">Delete Last Checkpoint</button>
         </div>
@@ -445,4 +447,14 @@ add_action('wp_ajax_version_tracker_delete_last_checkpoint', function() {
     } else {
         wp_die(json_encode(['error' => 'Failed to delete checkpoint']));
     }
+});
+
+add_action('wp_ajax_version_tracker_manual_check', function() {
+    if (!current_user_can('manage_options')) {
+        wp_die(json_encode(['error' => 'Unauthorized']));
+    }
+    
+    check_versions();
+    
+    wp_die(json_encode(['success' => true, 'message' => 'Version check completed successfully']));
 });

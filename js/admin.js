@@ -23,6 +23,34 @@ jQuery(document).ready(function($) {
         });
     });
     
+    $('#vt-manual-check-btn').on('click', function() {
+        var $btn = $(this);
+        var originalText = $btn.text();
+        $btn.prop('disabled', true).text('Checking...');
+        
+        $.ajax({
+            url: versionTrackerAdmin.ajaxurl,
+            type: 'POST',
+            data: {
+                action: versionTrackerAdmin.manualCheckAction
+            },
+            success: function(response) {
+                var data = JSON.parse(response);
+                if (data.success) {
+                    alert('Version check completed successfully');
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                    $btn.prop('disabled', false).text(originalText);
+                }
+            },
+            error: function() {
+                alert('Error performing version check');
+                $btn.prop('disabled', false).text(originalText);
+            }
+        });
+    });
+    
     $('#vt-create-checkpoint-btn').on('click', function() {
         $.ajax({
             url: versionTrackerAdmin.ajaxurl,
