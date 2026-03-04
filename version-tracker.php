@@ -16,6 +16,7 @@ if (!defined('ABSPATH')) {
 }
 
 define('VERSION_TRACKER_TABLE', 'version_tracker');
+define('VERSION_TRACKER_CHECKPOINTS_TABLE', 'version_tracker_checkpoints');
 define('VERSION_TRACKER_CRON_HOOK', 'version_tracker_daily_check');
 
 register_activation_hook(__FILE__, 'activate_version_tracker');
@@ -29,26 +30,37 @@ function activate_version_tracker() {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
+    $checkpoints_table = $wpdb->prefix . VERSION_TRACKER_CHECKPOINTS_TABLE;
     $charset_collate = $wpdb->get_charset_collate();
+    
+    $checkpoints_sql = "CREATE TABLE IF NOT EXISTS $checkpoints_table (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        date datetime DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY date (date)
+    ) $charset_collate;";
     
     $sql = "CREATE TABLE IF NOT EXISTS $table_name (
         id bigint(20) NOT NULL AUTO_INCREMENT,
+        checkpoint_id bigint(20) NOT NULL,
         type varchar(20) NOT NULL,
         name varchar(255) NOT NULL,
         version varchar(50) NOT NULL,
         state varchar(20) NOT NULL DEFAULT 'current',
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
+        KEY checkpoint_id (checkpoint_id),
         KEY type_name (type, name),
         KEY state (state),
         KEY created_at (created_at)
     ) $charset_collate;";
     
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    dbDelta($checkpoints_sql);
     dbDelta($sql);
     
+    create_checkpoint_if_needed();
     schedule_version_check();
-    
     check_versions();
 }
 
@@ -60,6 +72,34 @@ function schedule_version_check() {
     if (!wp_next_scheduled(VERSION_TRACKER_CRON_HOOK)) {
         wp_schedule_event(time(), 'daily', VERSION_TRACKER_CRON_HOOK);
     }
+}
+
+function create_checkpoint_if_needed() {
+    global $wpdb;
+    
+    $checkpoints_table = $wpdb->prefix . VERSION_TRACKER_CHECKPOINTS_TABLE;
+    
+    $checkpoint_exists = $wpdb->get_var("SELECT COUNT(*) FROM $checkpoints_table");
+    
+    if ($checkpoint_exists == 0) {
+        $wpdb->insert(
+            $checkpoints_table,
+            ['date' => current_time('mysql')],
+            ['%s']
+        );
+    }
+}
+
+function get_last_checkpoint_id() {
+    global $wpdb;
+    
+    $checkpoints_table = $wpdb->prefix . VERSION_TRACKER_CHECKPOINTS_TABLE;
+    
+    $checkpoint_id = $wpdb->get_var(
+        "SELECT id FROM $checkpoints_table ORDER BY id DESC LIMIT 1"
+    );
+    
+    return $checkpoint_id ? intval($checkpoint_id) : 0;
 }
 
 function check_versions() {
@@ -114,6 +154,7 @@ function compare_and_update_versions($type, $current_items) {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
+    $checkpoint_id = get_last_checkpoint_id();
     
     foreach ($current_items as $name => $version) {
         $existing = $wpdb->get_row($wpdb->prepare(
@@ -124,7 +165,7 @@ function compare_and_update_versions($type, $current_items) {
         ));
         
         if (!$existing) {
-            log_version_change($type, $name, $version, 'current');
+            log_version_change($type, $name, $version, 'current', $checkpoint_id);
         } elseif ($existing->version !== $version) {
             $wpdb->update(
                 $table_name,
@@ -133,7 +174,7 @@ function compare_and_update_versions($type, $current_items) {
                 ['%s'],
                 ['%d']
             );
-            log_version_change($type, $name, $version, 'current');
+            log_version_change($type, $name, $version, 'current', $checkpoint_id);
         }
     }
 }
@@ -161,7 +202,7 @@ function mark_removed_items($type, $current_items) {
     $wpdb->query($query);
 }
 
-function log_version_change($type, $name, $version, $state) {
+function log_version_change($type, $name, $version, $state, $checkpoint_id) {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
@@ -169,13 +210,14 @@ function log_version_change($type, $name, $version, $state) {
     $wpdb->insert(
         $table_name,
         [
+            'checkpoint_id' => $checkpoint_id,
             'type' => $type,
             'name' => $name,
             'version' => $version,
             'state' => $state,
             'created_at' => current_time('mysql')
         ],
-        ['%s', '%s', '%s', '%s', '%s']
+        ['%d', '%s', '%s', '%s', '%s', '%s']
     );
 }
 
@@ -215,7 +257,9 @@ function version_tracker_enqueue_admin_assets($hook) {
     
     wp_localize_script('version-tracker-admin', 'versionTrackerAdmin', [
         'ajaxurl' => admin_url('admin-ajax.php'),
-        'todayDate' => current_time('Y-m-d')
+        'todayDate' => current_time('Y-m-d'),
+        'createCheckpointAction' => 'version_tracker_create_checkpoint',
+        'deleteCheckpointAction' => 'version_tracker_delete_last_checkpoint'
     ]);
 }
 
@@ -234,6 +278,8 @@ function version_tracker_admin_page() {
             <label for="vt-date-picker">Select Date:</label>
             <input type="text" id="vt-date-picker" name="vt_date" value="<?php echo esc_attr($selected_date); ?>" />
             <button type="button" id="vt-filter-btn" class="button button-primary">Filter</button>
+            <button type="button" id="vt-create-checkpoint-btn" class="button button-secondary">Create Checkpoint</button>
+            <button type="button" id="vt-delete-checkpoint-btn" class="button button-danger">Delete Last Checkpoint</button>
         </div>
         
         <div id="vt-versions-container">
@@ -309,4 +355,65 @@ add_action('wp_ajax_version_tracker_get_versions', function() {
     $html = ob_get_clean();
     
     wp_die(json_encode(['html' => $html]));
+});
+
+add_action('wp_ajax_version_tracker_create_checkpoint', function() {
+    if (!current_user_can('manage_options')) {
+        wp_die(json_encode(['error' => 'Unauthorized']));
+    }
+    
+    global $wpdb;
+    $checkpoints_table = $wpdb->prefix . VERSION_TRACKER_CHECKPOINTS_TABLE;
+    
+    $result = $wpdb->insert(
+        $checkpoints_table,
+        ['date' => current_time('mysql')],
+        ['%s']
+    );
+    
+    if ($result) {
+        wp_die(json_encode(['success' => true, 'checkpoint_id' => $wpdb->insert_id]));
+    } else {
+        wp_die(json_encode(['error' => 'Failed to create checkpoint']));
+    }
+});
+
+add_action('wp_ajax_version_tracker_delete_last_checkpoint', function() {
+    if (!current_user_can('manage_options')) {
+        wp_die(json_encode(['error' => 'Unauthorized']));
+    }
+    
+    global $wpdb;
+    $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
+    $checkpoints_table = $wpdb->prefix . VERSION_TRACKER_CHECKPOINTS_TABLE;
+    
+    $last_checkpoint = $wpdb->get_row(
+        "SELECT id FROM $checkpoints_table ORDER BY id DESC LIMIT 1"
+    );
+    
+    if (!$last_checkpoint) {
+        wp_die(json_encode(['error' => 'No checkpoint to delete']));
+    }
+    
+    $checkpoint_id = intval($last_checkpoint->id);
+    $version_count = $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM $table_name WHERE checkpoint_id = %d",
+        $checkpoint_id
+    ));
+    
+    if ($version_count > 0) {
+        wp_die(json_encode(['error' => 'Cannot delete checkpoint that contains version records']));
+    }
+    
+    $delete_result = $wpdb->delete(
+        $checkpoints_table,
+        ['id' => $checkpoint_id],
+        ['%d']
+    );
+    
+    if ($delete_result) {
+        wp_die(json_encode(['success' => true]));
+    } else {
+        wp_die(json_encode(['error' => 'Failed to delete checkpoint']));
+    }
 });
