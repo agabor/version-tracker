@@ -76,3 +76,35 @@ tr.state-updated {
 tr.state-deleted {
     background-color: #fff5f5;
 }
+
+.vt-version,
+.vt-old-version,
+.vt-new-version {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.vt-version {
+    background-color: #e8f4f8;
+    color: #0073aa;
+}
+
+.vt-old-version {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.vt-arrow {
+    margin: 0 6px;
+    color: #666;
+    font-weight: bold;
+}
+
+.vt-new-version {
+    background-color: #d4edda;
+    color: #155724;
+}

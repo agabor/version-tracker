@@ -45,7 +45,8 @@ function activate_version_tracker() {
         checkpoint_id bigint(20) NOT NULL,
         type varchar(20) NOT NULL,
         name varchar(255) NOT NULL,
-        version varchar(50) NOT NULL,
+        old_version varchar(50),
+        new_version varchar(50),
         state varchar(20) NOT NULL DEFAULT 'current',
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
@@ -165,8 +166,8 @@ function compare_and_update_versions($type, $current_items) {
         ));
         
         if (!$existing) {
-            log_version_change($type, $name, $version, 'current', $checkpoint_id);
-        } elseif ($existing->version !== $version) {
+            log_version_change($type, $name, null, $version, 'current', $checkpoint_id);
+        } elseif ($existing->new_version !== $version) {
             $wpdb->update(
                 $table_name,
                 ['state' => 'old'],
@@ -174,7 +175,7 @@ function compare_and_update_versions($type, $current_items) {
                 ['%s'],
                 ['%d']
             );
-            log_version_change($type, $name, $version, 'current', $checkpoint_id);
+            log_version_change($type, $name, $existing->new_version, $version, 'current', $checkpoint_id);
         }
     }
 }
@@ -202,7 +203,7 @@ function mark_removed_items($type, $current_items) {
     $wpdb->query($query);
 }
 
-function log_version_change($type, $name, $version, $state, $checkpoint_id) {
+function log_version_change($type, $name, $old_version, $new_version, $state, $checkpoint_id) {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
@@ -213,11 +214,12 @@ function log_version_change($type, $name, $version, $state, $checkpoint_id) {
             'checkpoint_id' => $checkpoint_id,
             'type' => $type,
             'name' => $name,
-            'version' => $version,
+            'old_version' => $old_version,
+            'new_version' => $new_version,
             'state' => $state,
             'created_at' => current_time('mysql')
         ],
-        ['%d', '%s', '%s', '%s', '%s', '%s']
+        ['%d', '%s', '%s', '%s', '%s', '%s', '%s']
     );
 }
 
@@ -385,7 +387,7 @@ function version_tracker_display_plugins_since_checkpoint($checkpoint_id) {
                         <thead>
                             <tr>
                                 <th>Plugin Name</th>
-                                <th>Version</th>
+                                <th>Version Info</th>
                                 <th>State</th>
                                 <th>Changed At</th>
                             </tr>
@@ -394,7 +396,17 @@ function version_tracker_display_plugins_since_checkpoint($checkpoint_id) {
                             <?php foreach ($grouped[$state] as $record): ?>
                                 <tr class="state-<?php echo esc_attr($state); ?>">
                                     <td><?php echo esc_html($record->name); ?></td>
-                                    <td><?php echo esc_html($record->version); ?></td>
+                                    <td>
+                                        <?php if ($state === 'installed'): ?>
+                                            <span class="vt-version"><?php echo esc_html($record->new_version); ?></span>
+                                        <?php elseif ($state === 'updated'): ?>
+                                            <span class="vt-old-version"><?php echo esc_html($record->old_version); ?></span>
+                                            <span class="vt-arrow">→</span>
+                                            <span class="vt-new-version"><?php echo esc_html($record->new_version); ?></span>
+                                        <?php elseif ($state === 'deleted'): ?>
+                                            <span class="vt-old-version"><?php echo esc_html($record->old_version); ?></span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td><span class="vt-state-badge state-<?php echo esc_attr($state); ?>"><?php echo esc_html(ucfirst($state)); ?></span></td>
                                     <td><?php echo esc_html(date_i18n('Y-m-d H:i:s', strtotime($record->created_at))); ?></td>
                                 </tr>
