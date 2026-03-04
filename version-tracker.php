@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Version Tracker
  * Description: Automatically tracks WordPress core, plugin, and theme version changes daily
- * Version: 1.0.3
+ * Version: 1.0.4
  * Author: Gabor Angyal
  * Author URI: https://webshop.tech
  * License: GPL v2 or later
@@ -235,27 +235,13 @@ function version_tracker_get_checkpoints() {
     return $checkpoints;
 }
 
-function get_display_state($record, $all_records_by_plugin) {
-    if ($record->state === 'removed') {
+function get_display_state($record) {
+    if (!$record->old_version && $record->new_version) {
+        return 'installed';
+    } elseif ($record->old_version && $record->new_version) {
+        return 'updated';
+    } elseif ($record->old_version && !$record->new_version) {
         return 'deleted';
-    }
-    
-    if (isset($all_records_by_plugin[$record->name])) {
-        $plugin_records = $all_records_by_plugin[$record->name];
-        $has_old_state = false;
-        
-        foreach ($plugin_records as $rec) {
-            if ($rec->state === 'old') {
-                $has_old_state = true;
-                break;
-            }
-        }
-        
-        if ($record->state === 'current') {
-            return $has_old_state ? 'updated' : 'installed';
-        } elseif ($record->state === 'old') {
-            return 'updated';
-        }
     }
     
     return 'installed';
@@ -281,14 +267,14 @@ function version_tracker_enqueue_admin_assets($hook) {
         'version-tracker-admin',
         plugins_url('css/admin.css', __FILE__),
         [],
-        '1.0.3'
+        '1.0.4'
     );
     
     wp_enqueue_script(
         'version-tracker-admin',
         plugins_url('js/admin.js', __FILE__),
         ['jquery'],
-        '1.0.3',
+        '1.0.4',
         true
     );
     
@@ -341,7 +327,7 @@ function version_tracker_display_plugins_since_checkpoint($checkpoint_id) {
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
     
     $results = $wpdb->get_results($wpdb->prepare(
-        "SELECT * FROM $table_name WHERE type = %s AND checkpoint_id >= %d ORDER BY state, name, created_at DESC",
+        "SELECT * FROM $table_name WHERE type = %s AND checkpoint_id >= %d ORDER BY name, created_at DESC",
         'plugin',
         intval($checkpoint_id)
     ));
@@ -351,17 +337,9 @@ function version_tracker_display_plugins_since_checkpoint($checkpoint_id) {
         return;
     }
     
-    $all_records_by_plugin = [];
-    foreach ($results as $record) {
-        if (!isset($all_records_by_plugin[$record->name])) {
-            $all_records_by_plugin[$record->name] = [];
-        }
-        $all_records_by_plugin[$record->name][] = $record;
-    }
-    
     $grouped = [];
     foreach ($results as $record) {
-        $display_state = get_display_state($record, $all_records_by_plugin);
+        $display_state = get_display_state($record);
         
         if (!isset($grouped[$display_state])) {
             $grouped[$display_state] = [];
