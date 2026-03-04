@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Version Tracker
  * Description: Automatically tracks WordPress core, plugin, and theme version changes daily
- * Version: 1.0.5
+ * Version: 1.0.6
  * Author: Gabor Angyal
  * Author URI: https://webshop.tech
  * License: GPL v2 or later
@@ -259,6 +259,127 @@ function get_display_state($record) {
     return 'installed';
 }
 
+function version_tracker_get_admin_email() {
+    return get_option('admin_email');
+}
+
+function version_tracker_generate_report_html($checkpoint_id) {
+    global $wpdb;
+    
+    $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
+    
+    $results = $wpdb->get_results($wpdb->prepare(
+        "SELECT * FROM $table_name WHERE type = %s AND checkpoint_id >= %d ORDER BY name, created_at DESC",
+        'plugin',
+        intval($checkpoint_id)
+    ));
+    
+    if (empty($results)) {
+        return '<p>No plugin changes found since selected checkpoint.</p>';
+    }
+    
+    $grouped = [];
+    foreach ($results as $record) {
+        $display_state = get_display_state($record);
+        
+        if (!isset($grouped[$display_state])) {
+            $grouped[$display_state] = [];
+        }
+        $grouped[$display_state][] = $record;
+    }
+    
+    $state_labels = [
+        'installed' => 'Installed',
+        'updated' => 'Updated',
+        'deleted' => 'Deleted'
+    ];
+    
+    $state_order = ['installed', 'updated', 'deleted'];
+    
+    $html = '';
+    
+    foreach ($state_order as $state) {
+        if (isset($grouped[$state])) {
+            $html .= '<div style="margin-bottom: 30px;">';
+            $html .= '<h2 style="margin-top: 0; padding-bottom: 10px; border-bottom: 2px solid #0073aa; color: #0073aa;">' . esc_html($state_labels[$state]) . '</h2>';
+            $html .= '<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">';
+            $html .= '<thead><tr style="background-color: #f5f5f5; border-bottom: 1px solid #ddd;">';
+            $html .= '<th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Plugin Name</th>';
+            $html .= '<th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Version Info</th>';
+            $html .= '<th style="padding: 10px; text-align: left; border: 1px solid #ddd;">State</th>';
+            $html .= '<th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Changed At</th>';
+            $html .= '</tr></thead>';
+            $html .= '<tbody>';
+            
+            foreach ($grouped[$state] as $record) {
+                $html .= '<tr style="border-bottom: 1px solid #ddd;">';
+                $html .= '<td style="padding: 10px; border: 1px solid #ddd;">' . esc_html($record->name) . '</td>';
+                $html .= '<td style="padding: 10px; border: 1px solid #ddd;">';
+                
+                if ($state === 'installed') {
+                    $html .= '<span style="background-color: #e8f4f8; color: #0073aa; padding: 4px 8px; border-radius: 3px; font-family: monospace; font-weight: 500;">' . esc_html($record->new_version) . '</span>';
+                } elseif ($state === 'updated') {
+                    $html .= '<span style="background-color: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 3px; font-family: monospace; font-weight: 500;">' . esc_html($record->old_version) . '</span>';
+                    $html .= ' <span style="margin: 0 6px; color: #666; font-weight: bold;">→</span> ';
+                    $html .= '<span style="background-color: #d4edda; color: #155724; padding: 4px 8px; border-radius: 3px; font-family: monospace; font-weight: 500;">' . esc_html($record->new_version) . '</span>';
+                } elseif ($state === 'deleted') {
+                    $html .= '<span style="background-color: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 3px; font-family: monospace; font-weight: 500;">' . esc_html($record->old_version) . '</span>';
+                }
+                
+                $html .= '</td>';
+                $html .= '<td style="padding: 10px; border: 1px solid #ddd;">';
+                $html .= '<span style="display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;';
+                
+                if ($state === 'installed') {
+                    $html .= 'background-color: #d4edda; color: #155724;';
+                } elseif ($state === 'updated') {
+                    $html .= 'background-color: #fff3cd; color: #856404;';
+                } elseif ($state === 'deleted') {
+                    $html .= 'background-color: #f8d7da; color: #721c24;';
+                }
+                
+                $html .= '">' . esc_html(ucfirst($state)) . '</span>';
+                $html .= '</td>';
+                $html .= '<td style="padding: 10px; border: 1px solid #ddd;">' . esc_html(date_i18n('Y-m-d H:i:s', strtotime($record->created_at))) . '</td>';
+                $html .= '</tr>';
+            }
+            
+            $html .= '</tbody>';
+            $html .= '</table>';
+            $html .= '</div>';
+        }
+    }
+    
+    return $html;
+}
+
+function version_tracker_send_report_email($checkpoint_id) {
+    $admin_email = version_tracker_get_admin_email();
+    $site_name = get_bloginfo('name');
+    
+    $subject = sprintf('[%s] Version Tracker Report', $site_name);
+    
+    $report_html = version_tracker_generate_report_html($checkpoint_id);
+    
+    $message = '<!DOCTYPE html>';
+    $message .= '<html><head><meta charset="UTF-8"><title>Version Tracker Report</title></head>';
+    $message .= '<body style="font-family: Arial, sans-serif; color: #333; background-color: #f9f9f9;">';
+    $message .= '<div style="max-width: 600px; margin: 20px auto; padding: 20px; background-color: #ffffff; border: 1px solid #ddd; border-radius: 4px;">';
+    $message .= '<h1 style="margin-top: 0; color: #0073aa;">Version Tracker Report</h1>';
+    $message .= '<p style="margin: 10px 0; color: #666;">Site: <strong>' . esc_html($site_name) . '</strong></p>';
+    $message .= '<p style="margin: 10px 0; color: #666;">Report generated on: <strong>' . esc_html(date_i18n('Y-m-d H:i:s', current_time('timestamp'))) . '</strong></p>';
+    $message .= '<hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">';
+    $message .= $report_html;
+    $message .= '<hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">';
+    $message .= '<p style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 12px; color: #999;">This is an automated email from Version Tracker plugin.</p>';
+    $message .= '</div>';
+    $message .= '</body></html>';
+    
+    $headers = ['Content-Type: text/html; charset=UTF-8'];
+    
+    return wp_mail($admin_email, $subject, $message, $headers);
+}
+
 function version_tracker_add_admin_menu() {
     add_menu_page(
         'Version Tracker',
@@ -279,14 +400,14 @@ function version_tracker_enqueue_admin_assets($hook) {
         'version-tracker-admin',
         plugins_url('css/admin.css', __FILE__),
         [],
-        '1.0.5'
+        '1.0.6'
     );
     
     wp_enqueue_script(
         'version-tracker-admin',
         plugins_url('js/admin.js', __FILE__),
         ['jquery'],
-        '1.0.5',
+        '1.0.6',
         true
     );
     
@@ -295,7 +416,8 @@ function version_tracker_enqueue_admin_assets($hook) {
         'getVersionsAction' => 'version_tracker_get_versions',
         'createCheckpointAction' => 'version_tracker_create_checkpoint',
         'deleteCheckpointAction' => 'version_tracker_delete_last_checkpoint',
-        'manualCheckAction' => 'version_tracker_manual_check'
+        'manualCheckAction' => 'version_tracker_manual_check',
+        'sendReportAction' => 'version_tracker_send_report'
     ]);
 }
 
@@ -323,6 +445,7 @@ function version_tracker_admin_page() {
             <button type="button" id="vt-filter-btn" class="button button-primary">Show Changes</button>
             <button type="button" id="vt-manual-check-btn" class="button button-secondary">Check Now</button>
             <button type="button" id="vt-create-checkpoint-btn" class="button button-secondary">Create Checkpoint</button>
+            <button type="button" id="vt-send-report-btn" class="button button-secondary">Send Report</button>
             <button type="button" id="vt-delete-checkpoint-btn" class="button button-danger">Delete Last Checkpoint</button>
         </div>
         
@@ -497,4 +620,24 @@ add_action('wp_ajax_version_tracker_manual_check', function() {
     check_versions();
     
     wp_die(json_encode(['success' => true, 'message' => 'Version check completed successfully']));
+});
+
+add_action('wp_ajax_version_tracker_send_report', function() {
+    if (!current_user_can('manage_options')) {
+        wp_die(json_encode(['error' => 'Unauthorized']));
+    }
+    
+    $checkpoint_id = isset($_POST['checkpoint_id']) ? intval($_POST['checkpoint_id']) : 0;
+    
+    if ($checkpoint_id === 0) {
+        wp_die(json_encode(['error' => 'Invalid checkpoint ID']));
+    }
+    
+    $result = version_tracker_send_report_email($checkpoint_id);
+    
+    if ($result) {
+        wp_die(json_encode(['success' => true, 'message' => 'Report sent successfully to administrator email']));
+    } else {
+        wp_die(json_encode(['error' => 'Failed to send report email']));
+    }
 });
