@@ -221,6 +221,18 @@ function log_version_change($type, $name, $version, $state, $checkpoint_id) {
     );
 }
 
+function version_tracker_get_checkpoints() {
+    global $wpdb;
+    
+    $checkpoints_table = $wpdb->prefix . VERSION_TRACKER_CHECKPOINTS_TABLE;
+    
+    $checkpoints = $wpdb->get_results(
+        "SELECT id, date FROM $checkpoints_table ORDER BY id DESC"
+    );
+    
+    return $checkpoints;
+}
+
 function version_tracker_add_admin_menu() {
     add_menu_page(
         'Version Tracker',
@@ -237,9 +249,6 @@ function version_tracker_enqueue_admin_assets($hook) {
         return;
     }
     
-    wp_enqueue_script('jquery-ui-datepicker');
-    wp_enqueue_style('jquery-ui-datepicker');
-    
     wp_enqueue_style(
         'version-tracker-admin',
         plugins_url('css/admin.css', __FILE__),
@@ -250,14 +259,14 @@ function version_tracker_enqueue_admin_assets($hook) {
     wp_enqueue_script(
         'version-tracker-admin',
         plugins_url('js/admin.js', __FILE__),
-        ['jquery', 'jquery-ui-datepicker'],
+        ['jquery'],
         '1.0.0',
         true
     );
     
     wp_localize_script('version-tracker-admin', 'versionTrackerAdmin', [
         'ajaxurl' => admin_url('admin-ajax.php'),
-        'todayDate' => current_time('Y-m-d'),
+        'getVersionsAction' => 'version_tracker_get_versions',
         'createCheckpointAction' => 'version_tracker_create_checkpoint',
         'deleteCheckpointAction' => 'version_tracker_delete_last_checkpoint'
     ]);
@@ -268,76 +277,92 @@ function version_tracker_admin_page() {
         wp_die(__('You do not have sufficient permissions to access this page.'));
     }
     
-    $selected_date = isset($_GET['vt_date']) ? sanitize_text_field($_GET['vt_date']) : current_time('Y-m-d');
+    $checkpoints = version_tracker_get_checkpoints();
+    $selected_checkpoint_id = isset($_GET['vt_checkpoint']) ? intval($_GET['vt_checkpoint']) : (count($checkpoints) > 0 ? $checkpoints[0]->id : 0);
     
     ?>
     <div class="wrap">
         <h1>Version Tracker</h1>
         
-        <div class="vt-date-picker-container">
-            <label for="vt-date-picker">Select Date:</label>
-            <input type="text" id="vt-date-picker" name="vt_date" value="<?php echo esc_attr($selected_date); ?>" />
-            <button type="button" id="vt-filter-btn" class="button button-primary">Filter</button>
+        <div class="vt-checkpoint-selector-container">
+            <label for="vt-checkpoint-selector">Select Checkpoint:</label>
+            <select id="vt-checkpoint-selector" name="vt_checkpoint">
+                <?php foreach ($checkpoints as $checkpoint): ?>
+                    <option value="<?php echo esc_attr($checkpoint->id); ?>" <?php selected($selected_checkpoint_id, $checkpoint->id); ?>>
+                        <?php echo esc_html(date_i18n('Y-m-d H:i:s', strtotime($checkpoint->date))); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <button type="button" id="vt-filter-btn" class="button button-primary">Show Changes</button>
             <button type="button" id="vt-create-checkpoint-btn" class="button button-secondary">Create Checkpoint</button>
             <button type="button" id="vt-delete-checkpoint-btn" class="button button-danger">Delete Last Checkpoint</button>
         </div>
         
         <div id="vt-versions-container">
-            <?php version_tracker_display_versions($selected_date); ?>
+            <?php version_tracker_display_plugins_since_checkpoint($selected_checkpoint_id); ?>
         </div>
     </div>
     <?php
 }
 
-function version_tracker_display_versions($date) {
+function version_tracker_display_plugins_since_checkpoint($checkpoint_id) {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
     
     $results = $wpdb->get_results($wpdb->prepare(
-        "SELECT * FROM $table_name WHERE DATE(created_at) = %s ORDER BY type, name, created_at DESC",
-        $date
+        "SELECT * FROM $table_name WHERE type = %s AND checkpoint_id >= %d ORDER BY state, name, created_at DESC",
+        'plugin',
+        intval($checkpoint_id)
     ));
     
     if (empty($results)) {
-        echo '<p>No version records found for ' . esc_html($date) . '</p>';
+        echo '<p>No plugin changes found since selected checkpoint.</p>';
         return;
     }
     
     $grouped = [];
     foreach ($results as $record) {
-        if (!isset($grouped[$record->type])) {
-            $grouped[$record->type] = [];
+        if (!isset($grouped[$record->state])) {
+            $grouped[$record->state] = [];
         }
-        $grouped[$record->type][] = $record;
+        $grouped[$record->state][] = $record;
     }
+    
+    $state_labels = [
+        'current' => 'Installed/Updated',
+        'old' => 'Previously Updated',
+        'removed' => 'Deleted'
+    ];
+    
+    $state_order = ['current', 'removed', 'old'];
     
     ?>
     <div class="vt-results">
-        <?php foreach ($grouped as $type => $records): ?>
-            <div class="vt-type-section">
-                <h2><?php echo esc_html(ucfirst($type)); ?>s</h2>
-                <table class="wp-list-table widefat fixed striped">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Version</th>
-                            <th>State</th>
-                            <th>Recorded At</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($records as $record): ?>
-                            <tr class="state-<?php echo esc_attr($record->state); ?>">
-                                <td><?php echo esc_html($record->name); ?></td>
-                                <td><?php echo esc_html($record->version); ?></td>
-                                <td><span class="vt-state-badge state-<?php echo esc_attr($record->state); ?>"><?php echo esc_html(ucfirst($record->state)); ?></span></td>
-                                <td><?php echo esc_html($record->created_at); ?></td>
+        <?php foreach ($state_order as $state): ?>
+            <?php if (isset($grouped[$state])): ?>
+                <div class="vt-state-section">
+                    <h2><?php echo esc_html($state_labels[$state]); ?></h2>
+                    <table class="wp-list-table widefat fixed striped">
+                        <thead>
+                            <tr>
+                                <th>Plugin Name</th>
+                                <th>Version</th>
+                                <th>Changed At</th>
                             </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($grouped[$state] as $record): ?>
+                                <tr class="state-<?php echo esc_attr($record->state); ?>">
+                                    <td><?php echo esc_html($record->name); ?></td>
+                                    <td><?php echo esc_html($record->version); ?></td>
+                                    <td><?php echo esc_html(date_i18n('Y-m-d H:i:s', strtotime($record->created_at))); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
         <?php endforeach; ?>
     </div>
     <?php
@@ -348,10 +373,14 @@ add_action('wp_ajax_version_tracker_get_versions', function() {
         wp_die(json_encode(['error' => 'Unauthorized']));
     }
     
-    $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : current_time('Y-m-d');
+    $checkpoint_id = isset($_POST['checkpoint_id']) ? intval($_POST['checkpoint_id']) : 0;
+    
+    if ($checkpoint_id === 0) {
+        wp_die(json_encode(['error' => 'Invalid checkpoint ID']));
+    }
     
     ob_start();
-    version_tracker_display_versions($date);
+    version_tracker_display_plugins_since_checkpoint($checkpoint_id);
     $html = ob_get_clean();
     
     wp_die(json_encode(['html' => $html]));
