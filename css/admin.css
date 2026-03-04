@@ -22,6 +22,7 @@
 }
 
 #vt-filter-btn,
+#vt-manual-check-btn,
 #vt-create-checkpoint-btn,
 #vt-delete-checkpoint-btn {
     margin-right: 5px;
@@ -49,25 +50,29 @@
     font-weight: 600;
 }
 
-.vt-state-badge.state-current {
+.vt-state-badge.state-installed {
     background-color: #d4edda;
     color: #155724;
 }
 
-.vt-state-badge.state-old {
+.vt-state-badge.state-updated {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.vt-state-badge.state-deleted {
     background-color: #f8d7da;
     color: #721c24;
 }
 
-.vt-state-badge.state-removed {
-    background-color: #e2e3e5;
-    color: #383d41;
+tr.state-installed {
+    background-color: #f8f9fa;
 }
 
-tr.state-old {
+tr.state-updated {
+    background-color: #fffbf0;
+}
+
+tr.state-deleted {
     background-color: #fff5f5;
-}
-
-tr.state-removed {
-    background-color: #f5f5f5;
 }

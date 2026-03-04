@@ -233,6 +233,32 @@ function version_tracker_get_checkpoints() {
     return $checkpoints;
 }
 
+function get_display_state($record, $all_records_by_plugin) {
+    if ($record->state === 'removed') {
+        return 'deleted';
+    }
+    
+    if (isset($all_records_by_plugin[$record->name])) {
+        $plugin_records = $all_records_by_plugin[$record->name];
+        $has_old_state = false;
+        
+        foreach ($plugin_records as $rec) {
+            if ($rec->state === 'old') {
+                $has_old_state = true;
+                break;
+            }
+        }
+        
+        if ($record->state === 'current') {
+            return $has_old_state ? 'updated' : 'installed';
+        } elseif ($record->state === 'old') {
+            return 'updated';
+        }
+    }
+    
+    return 'installed';
+}
+
 function version_tracker_add_admin_menu() {
     add_menu_page(
         'Version Tracker',
@@ -323,21 +349,31 @@ function version_tracker_display_plugins_since_checkpoint($checkpoint_id) {
         return;
     }
     
+    $all_records_by_plugin = [];
+    foreach ($results as $record) {
+        if (!isset($all_records_by_plugin[$record->name])) {
+            $all_records_by_plugin[$record->name] = [];
+        }
+        $all_records_by_plugin[$record->name][] = $record;
+    }
+    
     $grouped = [];
     foreach ($results as $record) {
-        if (!isset($grouped[$record->state])) {
-            $grouped[$record->state] = [];
+        $display_state = get_display_state($record, $all_records_by_plugin);
+        
+        if (!isset($grouped[$display_state])) {
+            $grouped[$display_state] = [];
         }
-        $grouped[$record->state][] = $record;
+        $grouped[$display_state][] = $record;
     }
     
     $state_labels = [
-        'current' => 'Installed/Updated',
-        'old' => 'Previously Updated',
-        'removed' => 'Deleted'
+        'installed' => 'Installed',
+        'updated' => 'Updated',
+        'deleted' => 'Deleted'
     ];
     
-    $state_order = ['current', 'removed', 'old'];
+    $state_order = ['installed', 'updated', 'deleted'];
     
     ?>
     <div class="vt-results">
@@ -350,14 +386,16 @@ function version_tracker_display_plugins_since_checkpoint($checkpoint_id) {
                             <tr>
                                 <th>Plugin Name</th>
                                 <th>Version</th>
+                                <th>State</th>
                                 <th>Changed At</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php foreach ($grouped[$state] as $record): ?>
-                                <tr class="state-<?php echo esc_attr($record->state); ?>">
+                                <tr class="state-<?php echo esc_attr($state); ?>">
                                     <td><?php echo esc_html($record->name); ?></td>
                                     <td><?php echo esc_html($record->version); ?></td>
+                                    <td><span class="vt-state-badge state-<?php echo esc_attr($state); ?>"><?php echo esc_html(ucfirst($state)); ?></span></td>
                                     <td><?php echo esc_html(date_i18n('Y-m-d H:i:s', strtotime($record->created_at))); ?></td>
                                 </tr>
                             <?php endforeach; ?>
