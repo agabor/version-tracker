@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Version Tracker
  * Description: Automatically tracks WordPress core, plugin, and theme version changes daily
- * Version: 1.0.4
+ * Version: 1.0.5
  * Author: Gabor Angyal
  * Author URI: https://webshop.tech
  * License: GPL v2 or later
@@ -184,6 +184,7 @@ function mark_removed_items($type, $current_items) {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
+    $checkpoint_id = get_last_checkpoint_id();
     
     $current_items_sql = implode(',', array_map(function($item) {
         return "'" . esc_sql($item) . "'";
@@ -191,16 +192,27 @@ function mark_removed_items($type, $current_items) {
     
     if (empty($current_items)) {
         $query = $wpdb->prepare(
-            "UPDATE $table_name SET state = %s WHERE type = %s AND state = %s",
-            'removed',
+            "SELECT * FROM $table_name WHERE type = %s AND state = %s",
             $type,
             'current'
         );
     } else {
-        $query = "UPDATE $table_name SET state = 'removed' WHERE type = '" . esc_sql($type) . "' AND state = 'current' AND name NOT IN ($current_items_sql)";
+        $query = "SELECT * FROM $table_name WHERE type = '" . esc_sql($type) . "' AND state = 'current' AND name NOT IN ($current_items_sql)";
     }
     
-    $wpdb->query($query);
+    $removed_items = $wpdb->get_results($query);
+    
+    foreach ($removed_items as $item) {
+        $wpdb->update(
+            $table_name,
+            ['state' => 'old'],
+            ['id' => $item->id],
+            ['%s'],
+            ['%d']
+        );
+        
+        log_version_change($type, $item->name, $item->new_version, null, 'removed', $checkpoint_id);
+    }
 }
 
 function log_version_change($type, $name, $old_version, $new_version, $state, $checkpoint_id) {
@@ -267,14 +279,14 @@ function version_tracker_enqueue_admin_assets($hook) {
         'version-tracker-admin',
         plugins_url('css/admin.css', __FILE__),
         [],
-        '1.0.4'
+        '1.0.5'
     );
     
     wp_enqueue_script(
         'version-tracker-admin',
         plugins_url('js/admin.js', __FILE__),
         ['jquery'],
-        '1.0.4',
+        '1.0.5',
         true
     );
     
