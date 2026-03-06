@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Version Tracker
  * Description: Automatically tracks WordPress core, plugin, and theme version changes daily
- * Version: 1.0.6
+ * Version: 1.0.8
  * Author: Gabor Angyal
  * Author URI: https://webshop.tech
  * License: GPL v2 or later
@@ -380,13 +380,13 @@ function version_tracker_send_report_email($checkpoint_id) {
     $message .= '</head>';
     $message .= '<body style="font-family: Arial, sans-serif; color: #333; background-color: #f9f9f9;">';
     $message .= '<div style="max-width: 600px; margin: 20px auto; padding: 20px; background-color: #ffffff; border: 1px solid #ddd; border-radius: 4px;">';
-    $message .= '<h1 style="margin-top: 0; color: #0073aa;">Version Tracker Report</h1>';
+    $message .= '<h1 style="margin-top: 0; color: #0073aa;">Plugin Update Report</h1>';
     $message .= '<p style="margin: 10px 0; color: #666;">Site: <strong>' . esc_html($site_name) . '</strong></p>';
     $message .= '<p style="margin: 10px 0; color: #666;">Report generated on: <strong>' . esc_html(date_i18n('Y-m-d H:i:s', current_time('timestamp'))) . '</strong></p>';
     $message .= '<hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">';
     $message .= $report_html;
     $message .= '<hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">';
-    $message .= '<p style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 12px; color: #999;">This is an automated email from Version Tracker plugin.</p>';
+    $message .= '<p style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 12px; color: #999;">This is an automated email from the Version Tracker plugin, developed by <a href="https://webshop.tech" target="_blank">webshop.tech</a> .</p>';
     $message .= '</div>';
     $message .= '</body></html>';
     
@@ -415,14 +415,21 @@ function version_tracker_enqueue_admin_assets($hook) {
         'version-tracker-admin',
         plugins_url('css/admin.css', __FILE__),
         [],
-        '1.0.6'
+        '1.0.8'
     );
-    
+
+    wp_enqueue_style(
+            'version-tracker-table',
+            plugins_url('css/table.css', __FILE__),
+            [],
+            '1.0.8'
+    );
+
     wp_enqueue_script(
         'version-tracker-admin',
         plugins_url('js/admin.js', __FILE__),
         ['jquery'],
-        '1.0.6',
+        '1.0.8',
         true
     );
     
