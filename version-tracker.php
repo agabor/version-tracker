@@ -259,11 +259,7 @@ function get_display_state($record) {
     return 'installed';
 }
 
-function version_tracker_get_admin_email() {
-    return get_option('admin_email');
-}
-
-function version_tracker_generate_report_html($checkpoint_id) {
+function version_tracker_get_grouped_plugin_changes($checkpoint_id) {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
@@ -274,10 +270,6 @@ function version_tracker_generate_report_html($checkpoint_id) {
         intval($checkpoint_id)
     ));
     
-    if (empty($results)) {
-        return '<p>No plugin changes found since selected checkpoint.</p>';
-    }
-    
     $grouped = [];
     foreach ($results as $record) {
         $display_state = get_display_state($record);
@@ -286,6 +278,20 @@ function version_tracker_generate_report_html($checkpoint_id) {
             $grouped[$display_state] = [];
         }
         $grouped[$display_state][] = $record;
+    }
+    
+    return $grouped;
+}
+
+function version_tracker_get_admin_email() {
+    return get_option('admin_email');
+}
+
+function version_tracker_generate_report_html($checkpoint_id) {
+    $grouped = version_tracker_get_grouped_plugin_changes($checkpoint_id);
+    
+    if (empty($grouped)) {
+        return '<p>No plugin changes found since selected checkpoint.</p>';
     }
     
     $state_labels = [
@@ -457,29 +463,11 @@ function version_tracker_admin_page() {
 }
 
 function version_tracker_display_plugins_since_checkpoint($checkpoint_id) {
-    global $wpdb;
+    $grouped = version_tracker_get_grouped_plugin_changes($checkpoint_id);
     
-    $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
-    
-    $results = $wpdb->get_results($wpdb->prepare(
-        "SELECT * FROM $table_name WHERE type = %s AND checkpoint_id >= %d ORDER BY name, created_at DESC",
-        'plugin',
-        intval($checkpoint_id)
-    ));
-    
-    if (empty($results)) {
+    if (empty($grouped)) {
         echo '<p>No plugin changes found since selected checkpoint.</p>';
         return;
-    }
-    
-    $grouped = [];
-    foreach ($results as $record) {
-        $display_state = get_display_state($record);
-        
-        if (!isset($grouped[$display_state])) {
-            $grouped[$display_state] = [];
-        }
-        $grouped[$display_state][] = $record;
     }
     
     $state_labels = [
