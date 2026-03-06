@@ -287,9 +287,97 @@ function version_tracker_get_admin_email() {
     return get_option('admin_email');
 }
 
-function version_tracker_generate_report_html($checkpoint_id) {
-    $grouped = version_tracker_get_grouped_plugin_changes($checkpoint_id);
-    
+function version_tracker_get_embedded_styles() {
+    return '<style>
+        .vt-state-section {
+            margin-bottom: 30px;
+        }
+        .vt-state-section h2 {
+            margin-top: 0;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #0073aa;
+            color: #0073aa;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        table thead {
+            background-color: #f5f5f5;
+            border-bottom: 1px solid #ddd;
+        }
+        table th {
+            padding: 10px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        table td {
+            padding: 10px;
+            border: 1px solid #ddd;
+        }
+        table tbody tr {
+            border-bottom: 1px solid #ddd;
+        }
+        .vt-state-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .vt-state-badge.state-installed {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .vt-state-badge.state-updated {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .vt-state-badge.state-deleted {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        tr.state-installed {
+            background-color: #f8f9fa;
+        }
+        tr.state-updated {
+            background-color: #fffbf0;
+        }
+        tr.state-deleted {
+            background-color: #fff5f5;
+        }
+        .vt-version,
+        .vt-old-version,
+        .vt-new-version {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .vt-version {
+            background-color: #e8f4f8;
+            color: #0073aa;
+        }
+        .vt-old-version {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .vt-arrow {
+            margin: 0 6px;
+            color: #666;
+            font-weight: bold;
+        }
+        .vt-new-version {
+            background-color: #d4edda;
+            color: #155724;
+        }
+    </style>';
+}
+
+function version_tracker_generate_table_html($grouped) {
     if (empty($grouped)) {
         return '<p>No plugin changes found since selected checkpoint.</p>';
     }
@@ -302,51 +390,39 @@ function version_tracker_generate_report_html($checkpoint_id) {
     
     $state_order = ['installed', 'updated', 'deleted'];
     
-    $html = '';
+    $html = '<div class="vt-results">';
     
     foreach ($state_order as $state) {
         if (isset($grouped[$state])) {
-            $html .= '<div style="margin-bottom: 30px;">';
-            $html .= '<h2 style="margin-top: 0; padding-bottom: 10px; border-bottom: 2px solid #0073aa; color: #0073aa;">' . esc_html($state_labels[$state]) . '</h2>';
-            $html .= '<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">';
-            $html .= '<thead><tr style="background-color: #f5f5f5; border-bottom: 1px solid #ddd;">';
-            $html .= '<th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Plugin Name</th>';
-            $html .= '<th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Version Info</th>';
-            $html .= '<th style="padding: 10px; text-align: left; border: 1px solid #ddd;">State</th>';
-            $html .= '<th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Changed At</th>';
+            $html .= '<div class="vt-state-section">';
+            $html .= '<h2>' . esc_html($state_labels[$state]) . '</h2>';
+            $html .= '<table>';
+            $html .= '<thead><tr>';
+            $html .= '<th>Plugin Name</th>';
+            $html .= '<th>Version Info</th>';
+            $html .= '<th>State</th>';
+            $html .= '<th>Changed At</th>';
             $html .= '</tr></thead>';
             $html .= '<tbody>';
             
             foreach ($grouped[$state] as $record) {
-                $html .= '<tr style="border-bottom: 1px solid #ddd;">';
-                $html .= '<td style="padding: 10px; border: 1px solid #ddd;">' . esc_html($record->name) . '</td>';
-                $html .= '<td style="padding: 10px; border: 1px solid #ddd;">';
+                $html .= '<tr class="state-' . esc_attr($state) . '">';
+                $html .= '<td>' . esc_html($record->name) . '</td>';
+                $html .= '<td>';
                 
                 if ($state === 'installed') {
-                    $html .= '<span style="background-color: #e8f4f8; color: #0073aa; padding: 4px 8px; border-radius: 3px; font-family: monospace; font-weight: 500;">' . esc_html($record->new_version) . '</span>';
+                    $html .= '<span class="vt-version">' . esc_html($record->new_version) . '</span>';
                 } elseif ($state === 'updated') {
-                    $html .= '<span style="background-color: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 3px; font-family: monospace; font-weight: 500;">' . esc_html($record->old_version) . '</span>';
-                    $html .= ' <span style="margin: 0 6px; color: #666; font-weight: bold;">→</span> ';
-                    $html .= '<span style="background-color: #d4edda; color: #155724; padding: 4px 8px; border-radius: 3px; font-family: monospace; font-weight: 500;">' . esc_html($record->new_version) . '</span>';
+                    $html .= '<span class="vt-old-version">' . esc_html($record->old_version) . '</span>';
+                    $html .= '<span class="vt-arrow">→</span>';
+                    $html .= '<span class="vt-new-version">' . esc_html($record->new_version) . '</span>';
                 } elseif ($state === 'deleted') {
-                    $html .= '<span style="background-color: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 3px; font-family: monospace; font-weight: 500;">' . esc_html($record->old_version) . '</span>';
+                    $html .= '<span class="vt-old-version">' . esc_html($record->old_version) . '</span>';
                 }
                 
                 $html .= '</td>';
-                $html .= '<td style="padding: 10px; border: 1px solid #ddd;">';
-                $html .= '<span style="display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;';
-                
-                if ($state === 'installed') {
-                    $html .= 'background-color: #d4edda; color: #155724;';
-                } elseif ($state === 'updated') {
-                    $html .= 'background-color: #fff3cd; color: #856404;';
-                } elseif ($state === 'deleted') {
-                    $html .= 'background-color: #f8d7da; color: #721c24;';
-                }
-                
-                $html .= '">' . esc_html(ucfirst($state)) . '</span>';
-                $html .= '</td>';
-                $html .= '<td style="padding: 10px; border: 1px solid #ddd;">' . esc_html(date_i18n('Y-m-d H:i:s', strtotime($record->created_at))) . '</td>';
+                $html .= '<td><span class="vt-state-badge state-' . esc_attr($state) . '">' . esc_html(ucfirst($state)) . '</span></td>';
+                $html .= '<td>' . esc_html(date_i18n('Y-m-d H:i:s', strtotime($record->created_at))) . '</td>';
                 $html .= '</tr>';
             }
             
@@ -356,7 +432,16 @@ function version_tracker_generate_report_html($checkpoint_id) {
         }
     }
     
+    $html .= '</div>';
+    
     return $html;
+}
+
+function version_tracker_generate_report_html($checkpoint_id) {
+    $grouped = version_tracker_get_grouped_plugin_changes($checkpoint_id);
+    $table_html = version_tracker_generate_table_html($grouped);
+    
+    return $table_html;
 }
 
 function version_tracker_send_report_email($checkpoint_id) {
@@ -366,9 +451,12 @@ function version_tracker_send_report_email($checkpoint_id) {
     $subject = sprintf('[%s] Plugin Update Report', $site_name);
     
     $report_html = version_tracker_generate_report_html($checkpoint_id);
+    $embedded_styles = version_tracker_get_embedded_styles();
     
     $message = '<!DOCTYPE html>';
-    $message .= '<html><head><meta charset="UTF-8"><title>Plugin Update Report</title></head>';
+    $message .= '<html><head><meta charset="UTF-8"><title>Plugin Update Report</title>';
+    $message .= $embedded_styles;
+    $message .= '</head>';
     $message .= '<body style="font-family: Arial, sans-serif; color: #333; background-color: #f9f9f9;">';
     $message .= '<div style="max-width: 600px; margin: 20px auto; padding: 20px; background-color: #ffffff; border: 1px solid #ddd; border-radius: 4px;">';
     $message .= '<h1 style="margin-top: 0; color: #0073aa;">Version Tracker Report</h1>';
@@ -464,61 +552,7 @@ function version_tracker_admin_page() {
 
 function version_tracker_display_plugins_since_checkpoint($checkpoint_id) {
     $grouped = version_tracker_get_grouped_plugin_changes($checkpoint_id);
-    
-    if (empty($grouped)) {
-        echo '<p>No plugin changes found since selected checkpoint.</p>';
-        return;
-    }
-    
-    $state_labels = [
-        'installed' => 'Installed',
-        'updated' => 'Updated',
-        'deleted' => 'Deleted'
-    ];
-    
-    $state_order = ['installed', 'updated', 'deleted'];
-    
-    ?>
-    <div class="vt-results">
-        <?php foreach ($state_order as $state): ?>
-            <?php if (isset($grouped[$state])): ?>
-                <div class="vt-state-section">
-                    <h2><?php echo esc_html($state_labels[$state]); ?></h2>
-                    <table class="wp-list-table widefat fixed striped">
-                        <thead>
-                            <tr>
-                                <th>Plugin Name</th>
-                                <th>Version Info</th>
-                                <th>State</th>
-                                <th>Changed At</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($grouped[$state] as $record): ?>
-                                <tr class="state-<?php echo esc_attr($state); ?>">
-                                    <td><?php echo esc_html($record->name); ?></td>
-                                    <td>
-                                        <?php if ($state === 'installed'): ?>
-                                            <span class="vt-version"><?php echo esc_html($record->new_version); ?></span>
-                                        <?php elseif ($state === 'updated'): ?>
-                                            <span class="vt-old-version"><?php echo esc_html($record->old_version); ?></span>
-                                            <span class="vt-arrow">→</span>
-                                            <span class="vt-new-version"><?php echo esc_html($record->new_version); ?></span>
-                                        <?php elseif ($state === 'deleted'): ?>
-                                            <span class="vt-old-version"><?php echo esc_html($record->old_version); ?></span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><span class="vt-state-badge state-<?php echo esc_attr($state); ?>"><?php echo esc_html(ucfirst($state)); ?></span></td>
-                                    <td><?php echo esc_html(date_i18n('Y-m-d H:i:s', strtotime($record->created_at))); ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endif; ?>
-        <?php endforeach; ?>
-    </div>
-    <?php
+    echo version_tracker_generate_table_html($grouped);
 }
 
 add_action('wp_ajax_version_tracker_get_versions', function() {
@@ -532,9 +566,8 @@ add_action('wp_ajax_version_tracker_get_versions', function() {
         wp_die(json_encode(['error' => 'Invalid checkpoint ID']));
     }
     
-    ob_start();
-    version_tracker_display_plugins_since_checkpoint($checkpoint_id);
-    $html = ob_get_clean();
+    $grouped = version_tracker_get_grouped_plugin_changes($checkpoint_id);
+    $html = version_tracker_generate_table_html($grouped);
     
     wp_die(json_encode(['html' => $html]));
 });
