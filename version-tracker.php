@@ -396,18 +396,18 @@ function version_tracker_send_report_email($checkpoint_id) {
 }
 
 function version_tracker_add_admin_menu() {
-    add_menu_page(
+    add_submenu_page(
+        'tools.php',
         'Version Tracker',
         'Version Tracker',
         'manage_options',
         'version-tracker',
-        'version_tracker_admin_page',
-        'dashicons-update'
+        'version_tracker_admin_page'
     );
 }
 
 function version_tracker_enqueue_admin_assets($hook) {
-    if ($hook !== 'toplevel_page_version-tracker') {
+    if ($hook !== 'tools_page_version-tracker') {
         return;
     }
     
