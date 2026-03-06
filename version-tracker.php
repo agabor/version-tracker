@@ -357,12 +357,12 @@ function version_tracker_send_report_email($checkpoint_id) {
     $admin_email = version_tracker_get_admin_email();
     $site_name = get_bloginfo('name');
     
-    $subject = sprintf('[%s] Version Tracker Report', $site_name);
+    $subject = sprintf('[%s] Plugin Update Report', $site_name);
     
     $report_html = version_tracker_generate_report_html($checkpoint_id);
     
     $message = '<!DOCTYPE html>';
-    $message .= '<html><head><meta charset="UTF-8"><title>Version Tracker Report</title></head>';
+    $message .= '<html><head><meta charset="UTF-8"><title>Plugin Update Report</title></head>';
     $message .= '<body style="font-family: Arial, sans-serif; color: #333; background-color: #f9f9f9;">';
     $message .= '<div style="max-width: 600px; margin: 20px auto; padding: 20px; background-color: #ffffff; border: 1px solid #ddd; border-radius: 4px;">';
     $message .= '<h1 style="margin-top: 0; color: #0073aa;">Version Tracker Report</h1>';
@@ -445,8 +445,8 @@ function version_tracker_admin_page() {
             <button type="button" id="vt-filter-btn" class="button button-primary">Show Changes</button>
             <button type="button" id="vt-manual-check-btn" class="button button-secondary">Check Now</button>
             <button type="button" id="vt-create-checkpoint-btn" class="button button-secondary">Create Checkpoint</button>
-            <button type="button" id="vt-send-report-btn" class="button button-secondary">Send Report</button>
             <button type="button" id="vt-delete-checkpoint-btn" class="button button-danger">Delete Last Checkpoint</button>
+            <button type="button" id="vt-send-report-btn" class="button button-secondary">Send Report</button>
         </div>
         
         <div id="vt-versions-container">
