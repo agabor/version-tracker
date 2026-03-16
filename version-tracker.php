@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Version Tracker
  * Description: Automatically tracks WordPress core, plugin, and theme version changes daily
- * Version: 1.0.8
+ * Version: 1.0.9
  * Author: Gabor Angyal
  * Author URI: https://webshop.tech
  * License: GPL v2 or later
@@ -267,7 +267,7 @@ function version_tracker_get_grouped_plugin_changes($checkpoint_id) {
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
     
     $results = $wpdb->get_results($wpdb->prepare(
-        "SELECT * FROM $table_name WHERE type = %s AND checkpoint_id >= %d ORDER BY name, created_at DESC",
+        "SELECT * FROM $table_name WHERE type = %s AND checkpoint_id = %d ORDER BY name, created_at DESC",
         'plugin',
         intval($checkpoint_id)
     ));
@@ -315,21 +315,21 @@ function version_tracker_enqueue_admin_assets($hook) {
         'version-tracker-admin',
         plugins_url('css/admin.css', __FILE__),
         [],
-        '1.0.8'
+        '1.0.9'
     );
 
     wp_enqueue_style(
             'version-tracker-table',
             plugins_url('css/table.css', __FILE__),
             [],
-            '1.0.8'
+            '1.0.9'
     );
 
     wp_enqueue_script(
         'version-tracker-admin',
         plugins_url('js/admin.js', __FILE__),
         ['jquery'],
-        '1.0.8',
+        '1.0.9',
         true
     );
     
