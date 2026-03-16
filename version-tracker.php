@@ -285,6 +285,16 @@ function version_tracker_get_grouped_plugin_changes($checkpoint_id) {
     return $grouped;
 }
 
+function version_tracker_get_saved_report_email() {
+    $saved_email = get_option('version_tracker_report_email');
+    
+    if ($saved_email && is_email($saved_email)) {
+        return $saved_email;
+    }
+    
+    return get_option('admin_email');
+}
+
 function version_tracker_add_admin_menu() {
     add_submenu_page(
         'tools.php',
@@ -340,6 +350,7 @@ function version_tracker_admin_page() {
     
     $checkpoints = version_tracker_get_checkpoints();
     $selected_checkpoint_id = isset($_GET['vt_checkpoint']) ? intval($_GET['vt_checkpoint']) : (count($checkpoints) > 0 ? $checkpoints[0]->id : 0);
+    $saved_email = version_tracker_get_saved_report_email();
     
     ?>
     <div class="wrap">
@@ -358,6 +369,12 @@ function version_tracker_admin_page() {
             <button type="button" id="vt-manual-check-btn" class="button button-secondary">Check Now</button>
             <button type="button" id="vt-create-checkpoint-btn" class="button button-secondary">Create Checkpoint</button>
             <button type="button" id="vt-delete-checkpoint-btn" class="button button-danger">Delete Last Checkpoint</button>
+        </div>
+        
+        <div class="vt-email-input-container">
+            <label for="vt-report-email-input">Report Email Address:</label>
+            <input type="email" id="vt-report-email-input" class="vt-email-input" value="<?php echo esc_attr($saved_email); ?>" placeholder="Enter email address">
+            <p class="vt-email-info">Enter the email address where you want to receive the report</p>
             <button type="button" id="vt-send-report-btn" class="button button-secondary">Send Report</button>
         </div>
         
@@ -467,16 +484,35 @@ add_action('wp_ajax_version_tracker_send_report', function() {
     }
     
     $checkpoint_id = isset($_POST['checkpoint_id']) ? intval($_POST['checkpoint_id']) : 0;
+    $recipient_email = isset($_POST['recipient_email']) ? sanitize_email($_POST['recipient_email']) : '';
     
     if ($checkpoint_id === 0) {
         wp_die(json_encode(['error' => 'Invalid checkpoint ID']));
     }
     
-    $result = version_tracker_send_report_email($checkpoint_id);
+    if (empty($recipient_email)) {
+        $recipient_email = version_tracker_get_saved_report_email();
+    } elseif (!is_email($recipient_email)) {
+        wp_die(json_encode(['error' => 'Invalid email address']));
+    } else {
+        update_option('version_tracker_report_email', $recipient_email);
+    }
+    
+    $result = version_tracker_send_report_email($checkpoint_id, $recipient_email);
     
     if ($result) {
-        wp_die(json_encode(['success' => true, 'message' => 'Report sent successfully to administrator email']));
+        wp_die(json_encode(['success' => true, 'message' => 'Report sent successfully to ' . esc_html($recipient_email)]));
     } else {
         wp_die(json_encode(['error' => 'Failed to send report email']));
     }
+});
+
+add_action('wp_ajax_version_tracker_get_saved_email', function() {
+    if (!current_user_can('manage_options')) {
+        wp_die(json_encode(['error' => 'Unauthorized']));
+    }
+    
+    $email = version_tracker_get_saved_report_email();
+    
+    wp_die(json_encode(['email' => $email]));
 });

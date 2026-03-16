@@ -4,10 +4,6 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-function version_tracker_get_admin_email() {
-    return get_option('admin_email');
-}
-
 function version_tracker_get_embedded_styles() {
     $css_file = plugin_dir_path(__FILE__) . '../css/table.css';
     
@@ -86,8 +82,7 @@ function version_tracker_generate_report_html($checkpoint_id) {
     return $table_html;
 }
 
-function version_tracker_send_report_email($checkpoint_id) {
-    $admin_email = version_tracker_get_admin_email();
+function version_tracker_send_report_email($checkpoint_id, $recipient_email) {
     $site_name = get_bloginfo('name');
     
     $subject = sprintf('[%s] Plugin Update Report', $site_name);
@@ -113,5 +108,5 @@ function version_tracker_send_report_email($checkpoint_id) {
     
     $headers = ['Content-Type: text/html; charset=UTF-8'];
     
-    return wp_mail($admin_email, $subject, $message, $headers);
+    return wp_mail($recipient_email, $subject, $message, $headers);
 }

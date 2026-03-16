@@ -32,3 +32,35 @@
 .vt-results {
     margin-top: 20px;
 }
+
+.vt-email-input-container {
+    margin: 20px 0;
+    padding: 15px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.vt-email-input-container label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+#vt-report-email-input {
+    padding: 8px 10px;
+    margin-right: 10px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    font-size: 14px;
+    min-width: 300px;
+    background: #ffffff;
+    display: block;
+    margin-bottom: 10px;
+}
+
+.vt-email-info {
+    margin: 8px 0;
+    color: #666;
+    font-size: 13px;
+}

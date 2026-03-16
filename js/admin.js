@@ -1,7 +1,28 @@
 jQuery(document).ready(function($) {
+    let savedEmail = '';
+
+    function loadSavedEmail() {
+        $.ajax({
+            url: versionTrackerAdmin.ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'version_tracker_get_saved_email'
+            },
+            success: function(response) {
+                var data = JSON.parse(response);
+                if (data.email) {
+                    savedEmail = data.email;
+                    $('#vt-report-email-input').val(savedEmail);
+                }
+            }
+        });
+    }
+    
+    loadSavedEmail();
+    
     $('#vt-filter-btn').on('click', function() {
-        var selectedCheckpointId = $('#vt-checkpoint-selector').val();
-        
+        const selectedCheckpointId = $('#vt-checkpoint-selector').val();
+
         $.ajax({
             url: versionTrackerAdmin.ajaxurl,
             type: 'POST',
@@ -24,8 +45,8 @@ jQuery(document).ready(function($) {
     });
     
     $('#vt-manual-check-btn').on('click', function() {
-        var $btn = $(this);
-        var originalText = $btn.text();
+        const $btn = $(this);
+        const originalText = $btn.text();
         $btn.prop('disabled', true).text('Checking...');
         
         $.ajax({
@@ -59,7 +80,7 @@ jQuery(document).ready(function($) {
                 action: versionTrackerAdmin.createCheckpointAction
             },
             success: function(response) {
-                var data = JSON.parse(response);
+                const data = JSON.parse(response);
                 if (data.success) {
                     alert('Checkpoint created successfully');
                     location.reload();
@@ -74,9 +95,22 @@ jQuery(document).ready(function($) {
     });
     
     $('#vt-send-report-btn').on('click', function() {
-        var $btn = $(this);
-        var originalText = $btn.text();
-        var selectedCheckpointId = $('#vt-checkpoint-selector').val();
+        const $btn = $(this);
+        const originalText = $btn.text();
+        const selectedCheckpointId = $('#vt-checkpoint-selector').val();
+        const emailInput = $('#vt-report-email-input').val().trim();
+
+        if (!emailInput) {
+            alert('Please enter an email address');
+            return;
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(emailInput)) {
+            alert('Please enter a valid email address');
+            return;
+        }
+        
         $btn.prop('disabled', true).text('Sending...');
         
         $.ajax({
@@ -84,10 +118,11 @@ jQuery(document).ready(function($) {
             type: 'POST',
             data: {
                 action: versionTrackerAdmin.sendReportAction,
-                checkpoint_id: selectedCheckpointId
+                checkpoint_id: selectedCheckpointId,
+                recipient_email: emailInput
             },
             success: function(response) {
-                var data = JSON.parse(response);
+                const data = JSON.parse(response);
                 if (data.success) {
                     alert(data.message);
                     $btn.prop('disabled', false).text(originalText);
@@ -115,7 +150,7 @@ jQuery(document).ready(function($) {
                 action: versionTrackerAdmin.deleteCheckpointAction
             },
             success: function(response) {
-                var data = JSON.parse(response);
+                const data = JSON.parse(response);
                 if (data.success) {
                     alert('Checkpoint deleted successfully');
                     location.reload();
