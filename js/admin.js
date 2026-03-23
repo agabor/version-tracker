@@ -1,7 +1,7 @@
 jQuery(document).ready(function($) {
-    let savedEmail = '';
+    let savedEmails = '';
 
-    function loadSavedEmail() {
+    function loadSavedEmails() {
         $.ajax({
             url: versionTrackerAdmin.ajaxurl,
             type: 'POST',
@@ -11,14 +11,14 @@ jQuery(document).ready(function($) {
             success: function(response) {
                 var data = JSON.parse(response);
                 if (data.email) {
-                    savedEmail = data.email;
-                    $('#vt-report-email-input').val(savedEmail);
+                    savedEmails = data.email;
+                    $('#vt-report-email-input').val(savedEmails);
                 }
             }
         });
     }
     
-    loadSavedEmail();
+    loadSavedEmails();
     
     $('#vt-filter-btn').on('click', function() {
         const selectedCheckpointId = $('#vt-checkpoint-selector').val();
@@ -101,13 +101,19 @@ jQuery(document).ready(function($) {
         const emailInput = $('#vt-report-email-input').val().trim();
 
         if (!emailInput) {
-            alert('Please enter an email address');
+            alert('Please enter at least one email address');
             return;
         }
 
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(emailInput)) {
-            alert('Please enter a valid email address');
+        const validation = validateEmailList(emailInput);
+        
+        if (!validation.isValid) {
+            alert('Invalid email addresses: ' + validation.invalidEmails.join(', '));
+            return;
+        }
+        
+        if (validation.validEmails.length === 0) {
+            alert('Please enter at least one valid email address');
             return;
         }
         
@@ -119,7 +125,7 @@ jQuery(document).ready(function($) {
             data: {
                 action: versionTrackerAdmin.sendReportAction,
                 checkpoint_id: selectedCheckpointId,
-                recipient_email: emailInput
+                recipient_emails: emailInput
             },
             success: function(response) {
                 const data = JSON.parse(response);
@@ -163,4 +169,30 @@ jQuery(document).ready(function($) {
             }
         });
     });
+    
+    function validateEmailList(emailString) {
+        const emails = emailString.split(',').map(function(email) {
+            return email.trim();
+        }).filter(function(email) {
+            return email.length > 0;
+        });
+        
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const validEmails = [];
+        const invalidEmails = [];
+        
+        emails.forEach(function(email) {
+            if (emailRegex.test(email)) {
+                validEmails.push(email);
+            } else {
+                invalidEmails.push(email);
+            }
+        });
+        
+        return {
+            isValid: invalidEmails.length === 0,
+            validEmails: validEmails,
+            invalidEmails: invalidEmails
+        };
+    }
 });

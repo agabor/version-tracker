@@ -4,6 +4,24 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+function version_tracker_parse_email_list($email_string) {
+    $emails = array_map('trim', explode(',', $email_string));
+    $valid_emails = array_filter($emails, function($email) {
+        return is_email($email);
+    });
+    
+    return array_values($valid_emails);
+}
+
+function version_tracker_get_invalid_emails($email_string) {
+    $emails = array_map('trim', explode(',', $email_string));
+    $invalid_emails = array_filter($emails, function($email) {
+        return !empty($email) && !is_email($email);
+    });
+    
+    return array_values($invalid_emails);
+}
+
 function version_tracker_get_embedded_styles() {
     $css_file = plugin_dir_path(__FILE__) . '../css/table.css';
     
@@ -82,14 +100,62 @@ function version_tracker_generate_report_html($checkpoint_id) {
     return $table_html;
 }
 
-function version_tracker_send_report_email($checkpoint_id, $recipient_email) {
-    $site_name = get_bloginfo('name');
+function version_tracker_send_report_email($checkpoint_id, $recipient_emails) {
+    if (!is_array($recipient_emails)) {
+        $recipient_emails = [$recipient_emails];
+    }
     
+    $recipient_emails = array_filter($recipient_emails, function($email) {
+        return is_email($email);
+    });
+    
+    if (empty($recipient_emails)) {
+        return [
+            'success' => false,
+            'error' => 'No valid recipient emails provided',
+            'sent_to' => []
+        ];
+    }
+    
+    $site_name = get_bloginfo('name');
     $subject = sprintf('[%s] Plugin Update Report', $site_name);
     
     $report_html = version_tracker_generate_report_html($checkpoint_id);
     $embedded_styles = version_tracker_get_embedded_styles();
     
+    $message = version_tracker_build_report_email_body($site_name, $report_html, $embedded_styles);
+    $headers = ['Content-Type: text/html; charset=UTF-8'];
+    
+    $sent_to = [];
+    $failed_emails = [];
+    
+    foreach ($recipient_emails as $recipient_email) {
+        $result = wp_mail($recipient_email, $subject, $message, $headers);
+        
+        if ($result) {
+            $sent_to[] = $recipient_email;
+        } else {
+            $failed_emails[] = $recipient_email;
+        }
+    }
+    
+    if (!empty($sent_to)) {
+        return [
+            'success' => true,
+            'sent_to' => $sent_to,
+            'failed' => $failed_emails
+        ];
+    } else {
+        return [
+            'success' => false,
+            'error' => 'Failed to send emails to all recipients',
+            'sent_to' => [],
+            'failed' => $failed_emails
+        ];
+    }
+}
+
+function version_tracker_build_report_email_body($site_name, $report_html, $embedded_styles) {
     $message = '<!DOCTYPE html>';
     $message .= '<html><head><meta charset="UTF-8"><title>Plugin Update Report</title>';
     $message .= $embedded_styles;
@@ -102,11 +168,9 @@ function version_tracker_send_report_email($checkpoint_id, $recipient_email) {
     $message .= '<hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">';
     $message .= $report_html;
     $message .= '<hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">';
-    $message .= '<p style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 12px; color: #999;">This is an automated email from the Version Tracker plugin, developed by <a href="https://webshop.tech" target="_blank">webshop.tech</a> .</p>';
+    $message .= '<p style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 12px; color: #999;">This is an automated email from the Version Tracker plugin, developed by <a href="https://webshop.tech" target="_blank">webshop.tech</a>.</p>';
     $message .= '</div>';
     $message .= '</body></html>';
     
-    $headers = ['Content-Type: text/html; charset=UTF-8'];
-    
-    return wp_mail($recipient_email, $subject, $message, $headers);
+    return $message;
 }
