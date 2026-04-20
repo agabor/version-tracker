@@ -20,34 +20,6 @@ jQuery(document).ready(function($) {
     
     loadSavedEmails();
     
-    $('#vt-manual-check-btn').on('click', function() {
-        const $btn = $(this);
-        const originalText = $btn.text();
-        $btn.prop('disabled', true).text('Checking...');
-        
-        $.ajax({
-            url: versionTrackerAdmin.ajaxurl,
-            type: 'POST',
-            data: {
-                action: versionTrackerAdmin.manualCheckAction
-            },
-            success: function(response) {
-                var data = JSON.parse(response);
-                if (data.success) {
-                    alert('Version check completed successfully');
-                    location.reload();
-                } else {
-                    alert('Error: ' + data.error);
-                    $btn.prop('disabled', false).text(originalText);
-                }
-            },
-            error: function() {
-                alert('Error performing version check');
-                $btn.prop('disabled', false).text(originalText);
-            }
-        });
-    });
-    
     $('#vt-send-report-btn').on('click', function() {
         const $btn = $(this);
         const originalText = $btn.text();

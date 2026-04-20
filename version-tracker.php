@@ -16,14 +16,14 @@ if (!defined('ABSPATH')) {
 }
 
 define('VERSION_TRACKER_TABLE', 'version_tracker');
-define('VERSION_TRACKER_CRON_HOOK', 'version_tracker_daily_check');
 
 require_once(plugin_dir_path(__FILE__) . 'includes/email-report.php');
 
 register_activation_hook(__FILE__, 'activate_version_tracker');
 register_deactivation_hook(__FILE__, 'deactivate_version_tracker');
 
-add_action(VERSION_TRACKER_CRON_HOOK, 'check_versions');
+add_action('upgrader_process_complete', 'version_tracker_handle_plugin_update', 10, 2);
+add_action('deleted_plugin', 'version_tracker_handle_plugin_deletion', 10, 1);
 add_action('admin_menu', 'version_tracker_add_admin_menu');
 add_action('admin_enqueue_scripts', 'version_tracker_enqueue_admin_assets');
 
@@ -49,132 +49,97 @@ function activate_version_tracker() {
     
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
     dbDelta($sql);
-    
-    schedule_version_check();
-    check_versions();
 }
 
 function deactivate_version_tracker() {
-    wp_clear_scheduled_hook(VERSION_TRACKER_CRON_HOOK);
 }
 
-function schedule_version_check() {
-    if (!wp_next_scheduled(VERSION_TRACKER_CRON_HOOK)) {
-        wp_schedule_event(time(), 'daily', VERSION_TRACKER_CRON_HOOK);
+function version_tracker_handle_plugin_update($upgrader, $hook_extra) {
+    if (!isset($hook_extra['type']) || $hook_extra['type'] !== 'plugin') {
+        return;
     }
-}
-
-function check_versions() {
-    $core_version = get_core_version();
-    $plugins_versions = get_plugins_versions();
-    $themes_versions = get_themes_versions();
     
-    compare_and_update_versions('core', ['WordPress' => $core_version]);
-    compare_and_update_versions('plugin', $plugins_versions);
-    compare_and_update_versions('theme', $themes_versions);
+    if (!isset($hook_extra['plugins']) || empty($hook_extra['plugins'])) {
+        return;
+    }
     
-    mark_removed_items('plugin', array_keys($plugins_versions));
-    mark_removed_items('theme', array_keys($themes_versions));
-}
-
-function get_core_version() {
-    global $wp_version;
-    return $wp_version;
-}
-
-function get_plugins_versions() {
     if (!function_exists('get_plugins')) {
         require_once(ABSPATH . 'wp-admin/includes/plugin.php');
     }
     
     $all_plugins = get_plugins();
-    $plugins_data = [];
     
-    foreach ($all_plugins as $plugin_path => $plugin_data) {
+    foreach ($hook_extra['plugins'] as $plugin_path) {
+        if (!isset($all_plugins[$plugin_path])) {
+            continue;
+        }
+        
+        $plugin_data = $all_plugins[$plugin_path];
         $plugin_name = $plugin_data['Name'];
-        $plugin_version = $plugin_data['Version'];
-        $plugins_data[$plugin_name] = $plugin_version;
-    }
-    
-    return $plugins_data;
-}
-
-function get_themes_versions() {
-    $themes = wp_get_themes();
-    $themes_data = [];
-    
-    foreach ($themes as $theme) {
-        $theme_name = $theme->get('Name');
-        $theme_version = $theme->get('Version');
-        $themes_data[$theme_name] = $theme_version;
-    }
-    
-    return $themes_data;
-}
-
-function compare_and_update_versions($type, $current_items) {
-    global $wpdb;
-    
-    $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
-    
-    foreach ($current_items as $name => $version) {
-        $existing = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM $table_name WHERE type = %s AND name = %s AND state = %s ORDER BY created_at DESC LIMIT 1",
-            $type,
-            $name,
-            'current'
-        ));
+        $new_version = $plugin_data['Version'];
+        
+        $existing = version_tracker_get_current_plugin_record($plugin_name);
         
         if (!$existing) {
-            log_version_change($type, $name, null, $version, 'current');
-        } elseif ($existing->new_version !== $version) {
-            $wpdb->update(
-                $table_name,
-                ['state' => 'old'],
-                ['id' => $existing->id],
-                ['%s'],
-                ['%d']
-            );
-            log_version_change($type, $name, $existing->new_version, $version, 'current');
+            version_tracker_log_version_change('plugin', $plugin_name, null, $new_version, 'current');
+        } elseif ($existing->new_version !== $new_version) {
+            version_tracker_update_record_state($existing->id, 'old');
+            version_tracker_log_version_change('plugin', $plugin_name, $existing->new_version, $new_version, 'current');
         }
     }
 }
 
-function mark_removed_items($type, $current_items) {
+function version_tracker_handle_plugin_deletion($plugin) {
+    if (!function_exists('get_plugins')) {
+        require_once(ABSPATH . 'wp-admin/includes/plugin.php');
+    }
+    
+    $all_plugins = get_plugins();
+    
+    $deleted_plugin_name = null;
+    foreach ($all_plugins as $plugin_data) {
+        if ($plugin_data['Name']) {
+            $deleted_plugin_name = $plugin_data['Name'];
+            break;
+        }
+    }
+    
+    $existing = version_tracker_get_current_plugin_record($deleted_plugin_name);
+    
+    if ($existing) {
+        version_tracker_update_record_state($existing->id, 'old');
+        version_tracker_log_version_change('plugin', $deleted_plugin_name, $existing->new_version, null, 'removed');
+    }
+}
+
+function version_tracker_get_current_plugin_record($plugin_name) {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
     
-    $current_items_sql = implode(',', array_map(function($item) {
-        return "'" . esc_sql($item) . "'";
-    }, $current_items));
-    
-    if (empty($current_items)) {
-        $query = $wpdb->prepare(
-            "SELECT * FROM $table_name WHERE type = %s AND state = %s",
-            $type,
-            'current'
-        );
-    } else {
-        $query = "SELECT * FROM $table_name WHERE type = '" . esc_sql($type) . "' AND state = 'current' AND name NOT IN ($current_items_sql)";
-    }
-    
-    $removed_items = $wpdb->get_results($query);
-    
-    foreach ($removed_items as $item) {
-        $wpdb->update(
-            $table_name,
-            ['state' => 'old'],
-            ['id' => $item->id],
-            ['%s'],
-            ['%d']
-        );
-        
-        log_version_change($type, $item->name, $item->new_version, null, 'removed');
-    }
+    return $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $table_name WHERE type = %s AND name = %s AND state = %s ORDER BY created_at DESC LIMIT 1",
+        'plugin',
+        $plugin_name,
+        'current'
+    ));
 }
 
-function log_version_change($type, $name, $old_version, $new_version, $state) {
+function version_tracker_update_record_state($record_id, $state) {
+    global $wpdb;
+    
+    $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
+    
+    $wpdb->update(
+        $table_name,
+        ['state' => $state],
+        ['id' => $record_id],
+        ['%s'],
+        ['%d']
+    );
+}
+
+function version_tracker_log_version_change($type, $name, $old_version, $new_version, $state) {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
@@ -333,7 +298,6 @@ function version_tracker_enqueue_admin_assets($hook) {
     
     wp_localize_script('version-tracker-admin', 'versionTrackerAdmin', [
         'ajaxurl' => admin_url('admin-ajax.php'),
-        'manualCheckAction' => 'version_tracker_manual_check',
         'sendReportAction' => 'version_tracker_send_report'
     ]);
 }
@@ -353,7 +317,6 @@ function version_tracker_admin_page() {
             <label for="vt-report-email-input">Report Email Addresses:</label>
             <input type="text" id="vt-report-email-input" class="vt-email-input" value="<?php echo esc_attr($saved_emails); ?>" placeholder="Enter email addresses separated by commas (e.g., email1@example.com, email2@example.com)">
             <p class="vt-email-info">Enter one or more email addresses separated by commas where you want to receive the report</p>
-            <button type="button" id="vt-manual-check-btn" class="button button-secondary">Check Now</button>
             <button type="button" id="vt-send-report-btn" class="button button-secondary">Send Report</button>
         </div>
         
@@ -374,16 +337,6 @@ function version_tracker_display_plugins() {
     echo $available_updates_html;
     echo $changes_html;
 }
-
-add_action('wp_ajax_version_tracker_manual_check', function() {
-    if (!current_user_can('manage_options')) {
-        wp_die(json_encode(['error' => 'Unauthorized']));
-    }
-    
-    check_versions();
-    
-    wp_die(json_encode(['success' => true, 'message' => 'Version check completed successfully']));
-});
 
 add_action('wp_ajax_version_tracker_send_report', function() {
     if (!current_user_can('manage_options')) {
