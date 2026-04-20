@@ -97,7 +97,7 @@ function version_tracker_generate_table_html($grouped) {
             
             foreach ($grouped[$state] as $record) {
                 $html .= '<tr class="state-' . esc_attr($state) . '">';
-                $html .= '<td>' . esc_html($record->name) . '</td>';
+                $html .= '<td>' . esc_html($record->display_name) . '</td>';
                 $html .= '<td>';
                 
                 if ($state === 'installed') {

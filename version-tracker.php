@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Version Tracker
  * Description: Automatically tracks WordPress core, plugin, and theme version changes daily
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: Gabor Angyal
  * Author URI: https://webshop.tech
  * License: GPL v2 or later
@@ -36,14 +36,13 @@ function activate_version_tracker() {
     $sql = "CREATE TABLE IF NOT EXISTS $table_name (
         id bigint(20) NOT NULL AUTO_INCREMENT,
         type varchar(20) NOT NULL,
-        name varchar(255) NOT NULL,
+        slug varchar(255) NOT NULL,
+        display_name varchar(255) NOT NULL,
         old_version varchar(50),
         new_version varchar(50),
-        state varchar(20) NOT NULL DEFAULT 'current',
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
-        KEY type_name (type, name),
-        KEY state (state),
+        KEY type_slug (type, slug),
         KEY created_at (created_at)
     ) $charset_collate;";
     
@@ -52,6 +51,10 @@ function activate_version_tracker() {
 }
 
 function deactivate_version_tracker() {
+}
+
+function version_tracker_get_plugin_slug($plugin_path) {
+    return dirname($plugin_path);
 }
 
 function version_tracker_handle_plugin_update($upgrader, $hook_extra) {
@@ -75,16 +78,16 @@ function version_tracker_handle_plugin_update($upgrader, $hook_extra) {
         }
         
         $plugin_data = $all_plugins[$plugin_path];
+        $plugin_slug = version_tracker_get_plugin_slug($plugin_path);
         $plugin_name = $plugin_data['Name'];
         $new_version = $plugin_data['Version'];
         
-        $existing = version_tracker_get_current_plugin_record($plugin_name);
+        $existing = version_tracker_get_current_plugin_record($plugin_slug);
         
         if (!$existing) {
-            version_tracker_log_version_change('plugin', $plugin_name, null, $new_version, 'current');
+            version_tracker_log_version_change('plugin', $plugin_slug, $plugin_name, null, $new_version);
         } elseif ($existing->new_version !== $new_version) {
-            version_tracker_update_record_state($existing->id, 'old');
-            version_tracker_log_version_change('plugin', $plugin_name, $existing->new_version, $new_version, 'current');
+            version_tracker_log_version_change('plugin', $plugin_slug, $plugin_name, $existing->new_version, $new_version);
         }
     }
 }
@@ -94,52 +97,27 @@ function version_tracker_handle_plugin_deletion($plugin) {
         require_once(ABSPATH . 'wp-admin/includes/plugin.php');
     }
     
-    $all_plugins = get_plugins();
-    
-    $deleted_plugin_name = null;
-    foreach ($all_plugins as $plugin_data) {
-        if ($plugin_data['Name']) {
-            $deleted_plugin_name = $plugin_data['Name'];
-            break;
-        }
-    }
-    
-    $existing = version_tracker_get_current_plugin_record($deleted_plugin_name);
+    $plugin_slug = version_tracker_get_plugin_slug($plugin);
+    $existing = version_tracker_get_current_plugin_record($plugin_slug);
     
     if ($existing) {
-        version_tracker_update_record_state($existing->id, 'old');
-        version_tracker_log_version_change('plugin', $deleted_plugin_name, $existing->new_version, null, 'removed');
+        version_tracker_log_version_change('plugin', $plugin_slug, $existing->display_name, $existing->new_version, null);
     }
 }
 
-function version_tracker_get_current_plugin_record($plugin_name) {
+function version_tracker_get_current_plugin_record($plugin_slug) {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
     
     return $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM $table_name WHERE type = %s AND name = %s AND state = %s ORDER BY created_at DESC LIMIT 1",
+        "SELECT * FROM $table_name WHERE type = %s AND slug = %s ORDER BY created_at DESC LIMIT 1",
         'plugin',
-        $plugin_name,
-        'current'
+        $plugin_slug
     ));
 }
 
-function version_tracker_update_record_state($record_id, $state) {
-    global $wpdb;
-    
-    $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
-    
-    $wpdb->update(
-        $table_name,
-        ['state' => $state],
-        ['id' => $record_id],
-        ['%s'],
-        ['%d']
-    );
-}
-
-function version_tracker_log_version_change($type, $name, $old_version, $new_version, $state) {
+function version_tracker_log_version_change($type, $slug, $display_name, $old_version, $new_version) {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
@@ -148,10 +126,10 @@ function version_tracker_log_version_change($type, $name, $old_version, $new_ver
         $table_name,
         [
             'type' => $type,
-            'name' => $name,
+            'slug' => $slug,
+            'display_name' => $display_name,
             'old_version' => $old_version,
             'new_version' => $new_version,
-            'state' => $state,
             'created_at' => current_time('mysql')
         ],
         ['%s', '%s', '%s', '%s', '%s', '%s']
@@ -175,20 +153,17 @@ function version_tracker_get_grouped_plugin_changes() {
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
     
-    $results = $wpdb->get_results($wpdb->prepare(
-        "SELECT * FROM $table_name WHERE type = %s ORDER BY name, created_at DESC",
-        'plugin'
-    ));
+    $results = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table_name ORDER BY slug, created_at DESC"));
     
     $grouped = [];
     $seen = [];
     
     foreach ($results as $record) {
-        if (isset($seen[$record->name])) {
+        if (isset($seen[$record->slug])) {
             continue;
         }
         
-        $seen[$record->name] = true;
+        $seen[$record->slug] = true;
         $display_state = get_display_state($record);
         
         if (!isset($grouped[$display_state])) {
@@ -278,21 +253,21 @@ function version_tracker_enqueue_admin_assets($hook) {
         'version-tracker-admin',
         plugins_url('css/admin.css', __FILE__),
         [],
-        '1.2.0'
+        '1.2.1'
     );
 
     wp_enqueue_style(
             'version-tracker-table',
             plugins_url('css/table.css', __FILE__),
             [],
-            '1.2.0'
+            '1.2.1'
     );
 
     wp_enqueue_script(
         'version-tracker-admin',
         plugins_url('js/admin.js', __FILE__),
         ['jquery'],
-        '1.2.0',
+        '1.2.1',
         true
     );
     
