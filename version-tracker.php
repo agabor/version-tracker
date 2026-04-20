@@ -16,7 +16,6 @@ if (!defined('ABSPATH')) {
 }
 
 define('VERSION_TRACKER_TABLE', 'version_tracker');
-define('VERSION_TRACKER_CHECKPOINTS_TABLE', 'version_tracker_checkpoints');
 define('VERSION_TRACKER_CRON_HOOK', 'version_tracker_daily_check');
 
 require_once(plugin_dir_path(__FILE__) . 'includes/email-report.php');
@@ -32,19 +31,10 @@ function activate_version_tracker() {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
-    $checkpoints_table = $wpdb->prefix . VERSION_TRACKER_CHECKPOINTS_TABLE;
     $charset_collate = $wpdb->get_charset_collate();
-    
-    $checkpoints_sql = "CREATE TABLE IF NOT EXISTS $checkpoints_table (
-        id bigint(20) NOT NULL AUTO_INCREMENT,
-        date datetime DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        KEY date (date)
-    ) $charset_collate;";
     
     $sql = "CREATE TABLE IF NOT EXISTS $table_name (
         id bigint(20) NOT NULL AUTO_INCREMENT,
-        checkpoint_id bigint(20) NOT NULL,
         type varchar(20) NOT NULL,
         name varchar(255) NOT NULL,
         old_version varchar(50),
@@ -52,17 +42,14 @@ function activate_version_tracker() {
         state varchar(20) NOT NULL DEFAULT 'current',
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
-        KEY checkpoint_id (checkpoint_id),
         KEY type_name (type, name),
         KEY state (state),
         KEY created_at (created_at)
     ) $charset_collate;";
     
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-    dbDelta($checkpoints_sql);
     dbDelta($sql);
     
-    create_checkpoint_if_needed();
     schedule_version_check();
     check_versions();
 }
@@ -75,34 +62,6 @@ function schedule_version_check() {
     if (!wp_next_scheduled(VERSION_TRACKER_CRON_HOOK)) {
         wp_schedule_event(time(), 'daily', VERSION_TRACKER_CRON_HOOK);
     }
-}
-
-function create_checkpoint_if_needed() {
-    global $wpdb;
-    
-    $checkpoints_table = $wpdb->prefix . VERSION_TRACKER_CHECKPOINTS_TABLE;
-    
-    $checkpoint_exists = $wpdb->get_var("SELECT COUNT(*) FROM $checkpoints_table");
-    
-    if ($checkpoint_exists == 0) {
-        $wpdb->insert(
-            $checkpoints_table,
-            ['date' => current_time('mysql')],
-            ['%s']
-        );
-    }
-}
-
-function get_last_checkpoint_id() {
-    global $wpdb;
-    
-    $checkpoints_table = $wpdb->prefix . VERSION_TRACKER_CHECKPOINTS_TABLE;
-    
-    $checkpoint_id = $wpdb->get_var(
-        "SELECT id FROM $checkpoints_table ORDER BY id DESC LIMIT 1"
-    );
-    
-    return $checkpoint_id ? intval($checkpoint_id) : 0;
 }
 
 function check_versions() {
@@ -157,7 +116,6 @@ function compare_and_update_versions($type, $current_items) {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
-    $checkpoint_id = get_last_checkpoint_id();
     
     foreach ($current_items as $name => $version) {
         $existing = $wpdb->get_row($wpdb->prepare(
@@ -168,7 +126,7 @@ function compare_and_update_versions($type, $current_items) {
         ));
         
         if (!$existing) {
-            log_version_change($type, $name, null, $version, 'current', $checkpoint_id);
+            log_version_change($type, $name, null, $version, 'current');
         } elseif ($existing->new_version !== $version) {
             $wpdb->update(
                 $table_name,
@@ -177,7 +135,7 @@ function compare_and_update_versions($type, $current_items) {
                 ['%s'],
                 ['%d']
             );
-            log_version_change($type, $name, $existing->new_version, $version, 'current', $checkpoint_id);
+            log_version_change($type, $name, $existing->new_version, $version, 'current');
         }
     }
 }
@@ -186,7 +144,6 @@ function mark_removed_items($type, $current_items) {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
-    $checkpoint_id = get_last_checkpoint_id();
     
     $current_items_sql = implode(',', array_map(function($item) {
         return "'" . esc_sql($item) . "'";
@@ -213,11 +170,11 @@ function mark_removed_items($type, $current_items) {
             ['%d']
         );
         
-        log_version_change($type, $item->name, $item->new_version, null, 'removed', $checkpoint_id);
+        log_version_change($type, $item->name, $item->new_version, null, 'removed');
     }
 }
 
-function log_version_change($type, $name, $old_version, $new_version, $state, $checkpoint_id) {
+function log_version_change($type, $name, $old_version, $new_version, $state) {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
@@ -225,7 +182,6 @@ function log_version_change($type, $name, $old_version, $new_version, $state, $c
     $wpdb->insert(
         $table_name,
         [
-            'checkpoint_id' => $checkpoint_id,
             'type' => $type,
             'name' => $name,
             'old_version' => $old_version,
@@ -233,20 +189,8 @@ function log_version_change($type, $name, $old_version, $new_version, $state, $c
             'state' => $state,
             'created_at' => current_time('mysql')
         ],
-        ['%d', '%s', '%s', '%s', '%s', '%s', '%s']
+        ['%s', '%s', '%s', '%s', '%s', '%s']
     );
-}
-
-function version_tracker_get_checkpoints() {
-    global $wpdb;
-    
-    $checkpoints_table = $wpdb->prefix . VERSION_TRACKER_CHECKPOINTS_TABLE;
-    
-    $checkpoints = $wpdb->get_results(
-        "SELECT id, date FROM $checkpoints_table ORDER BY id DESC"
-    );
-    
-    return $checkpoints;
 }
 
 function get_display_state($record) {
@@ -261,19 +205,25 @@ function get_display_state($record) {
     return 'installed';
 }
 
-function version_tracker_get_grouped_plugin_changes($checkpoint_id) {
+function version_tracker_get_grouped_plugin_changes() {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
     
     $results = $wpdb->get_results($wpdb->prepare(
-        "SELECT * FROM $table_name WHERE type = %s AND checkpoint_id = %d ORDER BY name, created_at DESC",
-        'plugin',
-        intval($checkpoint_id)
+        "SELECT * FROM $table_name WHERE type = %s ORDER BY name, created_at DESC",
+        'plugin'
     ));
     
     $grouped = [];
+    $seen = [];
+    
     foreach ($results as $record) {
+        if (isset($seen[$record->name])) {
+            continue;
+        }
+        
+        $seen[$record->name] = true;
         $display_state = get_display_state($record);
         
         if (!isset($grouped[$display_state])) {
@@ -383,9 +333,6 @@ function version_tracker_enqueue_admin_assets($hook) {
     
     wp_localize_script('version-tracker-admin', 'versionTrackerAdmin', [
         'ajaxurl' => admin_url('admin-ajax.php'),
-        'getVersionsAction' => 'version_tracker_get_versions',
-        'createCheckpointAction' => 'version_tracker_create_checkpoint',
-        'deleteCheckpointAction' => 'version_tracker_delete_last_checkpoint',
         'manualCheckAction' => 'version_tracker_manual_check',
         'sendReportAction' => 'version_tracker_send_report'
     ]);
@@ -396,136 +343,37 @@ function version_tracker_admin_page() {
         wp_die(__('You do not have sufficient permissions to access this page.'));
     }
     
-    $checkpoints = version_tracker_get_checkpoints();
-    $selected_checkpoint_id = isset($_GET['vt_checkpoint']) ? intval($_GET['vt_checkpoint']) : (count($checkpoints) > 0 ? $checkpoints[0]->id : 0);
     $saved_emails = version_tracker_get_saved_report_emails_string();
     
     ?>
     <div class="wrap">
         <h1>Version Tracker</h1>
         
-        <div class="vt-checkpoint-selector-container">
-            <label for="vt-checkpoint-selector">Select Checkpoint:</label>
-            <select id="vt-checkpoint-selector" name="vt_checkpoint">
-                <?php foreach ($checkpoints as $checkpoint): ?>
-                    <option value="<?php echo esc_attr($checkpoint->id); ?>" <?php selected($selected_checkpoint_id, $checkpoint->id); ?>>
-                        <?php echo esc_html(date_i18n('Y-m-d H:i:s', strtotime($checkpoint->date))); ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <button type="button" id="vt-filter-btn" class="button button-primary">Show Changes</button>
-            <button type="button" id="vt-manual-check-btn" class="button button-secondary">Check Now</button>
-            <button type="button" id="vt-create-checkpoint-btn" class="button button-secondary">Create Checkpoint</button>
-            <button type="button" id="vt-delete-checkpoint-btn" class="button button-danger">Delete Last Checkpoint</button>
-        </div>
-        
         <div class="vt-email-input-container">
             <label for="vt-report-email-input">Report Email Addresses:</label>
             <input type="text" id="vt-report-email-input" class="vt-email-input" value="<?php echo esc_attr($saved_emails); ?>" placeholder="Enter email addresses separated by commas (e.g., email1@example.com, email2@example.com)">
             <p class="vt-email-info">Enter one or more email addresses separated by commas where you want to receive the report</p>
+            <button type="button" id="vt-manual-check-btn" class="button button-secondary">Check Now</button>
             <button type="button" id="vt-send-report-btn" class="button button-secondary">Send Report</button>
         </div>
         
         <div id="vt-versions-container">
-            <?php version_tracker_display_plugins_since_checkpoint($selected_checkpoint_id); ?>
+            <?php version_tracker_display_plugins(); ?>
         </div>
     </div>
     <?php
 }
 
-function version_tracker_display_plugins_since_checkpoint($checkpoint_id) {
+function version_tracker_display_plugins() {
     $available_updates = get_plugins_with_available_updates();
     $available_updates_html = version_tracker_generate_available_updates_table_html($available_updates);
     
-    $grouped = version_tracker_get_grouped_plugin_changes($checkpoint_id);
+    $grouped = version_tracker_get_grouped_plugin_changes();
     $changes_html = version_tracker_generate_table_html($grouped);
     
     echo $available_updates_html;
     echo $changes_html;
 }
-
-add_action('wp_ajax_version_tracker_get_versions', function() {
-    if (!current_user_can('manage_options')) {
-        wp_die(json_encode(['error' => 'Unauthorized']));
-    }
-    
-    $checkpoint_id = isset($_POST['checkpoint_id']) ? intval($_POST['checkpoint_id']) : 0;
-    
-    if ($checkpoint_id === 0) {
-        wp_die(json_encode(['error' => 'Invalid checkpoint ID']));
-    }
-    
-    $available_updates = get_plugins_with_available_updates();
-    $available_updates_html = version_tracker_generate_available_updates_table_html($available_updates);
-    
-    $grouped = version_tracker_get_grouped_plugin_changes($checkpoint_id);
-    $changes_html = version_tracker_generate_table_html($grouped);
-    
-    $html = $available_updates_html . $changes_html;
-    
-    wp_die(json_encode(['html' => $html]));
-});
-
-add_action('wp_ajax_version_tracker_create_checkpoint', function() {
-    if (!current_user_can('manage_options')) {
-        wp_die(json_encode(['error' => 'Unauthorized']));
-    }
-    
-    global $wpdb;
-    $checkpoints_table = $wpdb->prefix . VERSION_TRACKER_CHECKPOINTS_TABLE;
-    
-    $result = $wpdb->insert(
-        $checkpoints_table,
-        ['date' => current_time('mysql')],
-        ['%s']
-    );
-    
-    if ($result) {
-        wp_die(json_encode(['success' => true, 'checkpoint_id' => $wpdb->insert_id]));
-    } else {
-        wp_die(json_encode(['error' => 'Failed to create checkpoint']));
-    }
-});
-
-add_action('wp_ajax_version_tracker_delete_last_checkpoint', function() {
-    if (!current_user_can('manage_options')) {
-        wp_die(json_encode(['error' => 'Unauthorized']));
-    }
-    
-    global $wpdb;
-    $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
-    $checkpoints_table = $wpdb->prefix . VERSION_TRACKER_CHECKPOINTS_TABLE;
-    
-    $last_checkpoint = $wpdb->get_row(
-        "SELECT id FROM $checkpoints_table ORDER BY id DESC LIMIT 1"
-    );
-    
-    if (!$last_checkpoint) {
-        wp_die(json_encode(['error' => 'No checkpoint to delete']));
-    }
-    
-    $checkpoint_id = intval($last_checkpoint->id);
-    $version_count = $wpdb->get_var($wpdb->prepare(
-        "SELECT COUNT(*) FROM $table_name WHERE checkpoint_id = %d",
-        $checkpoint_id
-    ));
-    
-    if ($version_count > 0) {
-        wp_die(json_encode(['error' => 'Cannot delete checkpoint that contains version records']));
-    }
-    
-    $delete_result = $wpdb->delete(
-        $checkpoints_table,
-        ['id' => $checkpoint_id],
-        ['%d']
-    );
-    
-    if ($delete_result) {
-        wp_die(json_encode(['success' => true]));
-    } else {
-        wp_die(json_encode(['error' => 'Failed to delete checkpoint']));
-    }
-});
 
 add_action('wp_ajax_version_tracker_manual_check', function() {
     if (!current_user_can('manage_options')) {
@@ -542,12 +390,7 @@ add_action('wp_ajax_version_tracker_send_report', function() {
         wp_die(json_encode(['error' => 'Unauthorized']));
     }
     
-    $checkpoint_id = isset($_POST['checkpoint_id']) ? intval($_POST['checkpoint_id']) : 0;
     $recipient_emails_string = isset($_POST['recipient_emails']) ? sanitize_text_field($_POST['recipient_emails']) : '';
-    
-    if ($checkpoint_id === 0) {
-        wp_die(json_encode(['error' => 'Invalid checkpoint ID']));
-    }
     
     if (empty($recipient_emails_string)) {
         $recipient_emails = version_tracker_get_saved_report_emails();
@@ -566,7 +409,7 @@ add_action('wp_ajax_version_tracker_send_report', function() {
         update_option('version_tracker_report_emails', $recipient_emails);
     }
     
-    $result = version_tracker_send_report_email($checkpoint_id, $recipient_emails);
+    $result = version_tracker_send_report_email($recipient_emails);
     
     if ($result['success']) {
         $recipient_count = count($result['sent_to']);

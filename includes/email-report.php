@@ -69,7 +69,7 @@ function version_tracker_generate_available_updates_table_html($available_update
 
 function version_tracker_generate_table_html($grouped) {
     if (empty($grouped)) {
-        return '<p>No plugin changes found since selected checkpoint.</p>';
+        return '<p>No plugin changes found.</p>';
     }
     
     $state_labels = [
@@ -127,17 +127,17 @@ function version_tracker_generate_table_html($grouped) {
     return $html;
 }
 
-function version_tracker_generate_report_html($checkpoint_id) {
+function version_tracker_generate_report_html() {
     $available_updates = get_plugins_with_available_updates();
     $available_updates_html = version_tracker_generate_available_updates_table_html($available_updates);
     
-    $grouped = version_tracker_get_grouped_plugin_changes($checkpoint_id);
+    $grouped = version_tracker_get_grouped_plugin_changes();
     $changes_html = version_tracker_generate_table_html($grouped);
     
     return $available_updates_html . $changes_html;
 }
 
-function version_tracker_send_report_email($checkpoint_id, $recipient_emails) {
+function version_tracker_send_report_email($recipient_emails) {
     if (!is_array($recipient_emails)) {
         $recipient_emails = [$recipient_emails];
     }
@@ -157,7 +157,7 @@ function version_tracker_send_report_email($checkpoint_id, $recipient_emails) {
     $site_name = get_bloginfo('name');
     $subject = sprintf('[%s] Plugin Update Report', $site_name);
     
-    $report_html = version_tracker_generate_report_html($checkpoint_id);
+    $report_html = version_tracker_generate_report_html();
     $embedded_styles = version_tracker_get_embedded_styles();
     
     $message = version_tracker_build_report_email_body($site_name, $report_html, $embedded_styles);

@@ -20,30 +20,6 @@ jQuery(document).ready(function($) {
     
     loadSavedEmails();
     
-    $('#vt-filter-btn').on('click', function() {
-        const selectedCheckpointId = $('#vt-checkpoint-selector').val();
-
-        $.ajax({
-            url: versionTrackerAdmin.ajaxurl,
-            type: 'POST',
-            data: {
-                action: versionTrackerAdmin.getVersionsAction,
-                checkpoint_id: selectedCheckpointId
-            },
-            success: function(response) {
-                var data = JSON.parse(response);
-                if (data.error) {
-                    alert('Error: ' + data.error);
-                } else {
-                    $('#vt-versions-container').html(data.html);
-                }
-            },
-            error: function() {
-                alert('Error loading versions');
-            }
-        });
-    });
-    
     $('#vt-manual-check-btn').on('click', function() {
         const $btn = $(this);
         const originalText = $btn.text();
@@ -72,32 +48,9 @@ jQuery(document).ready(function($) {
         });
     });
     
-    $('#vt-create-checkpoint-btn').on('click', function() {
-        $.ajax({
-            url: versionTrackerAdmin.ajaxurl,
-            type: 'POST',
-            data: {
-                action: versionTrackerAdmin.createCheckpointAction
-            },
-            success: function(response) {
-                const data = JSON.parse(response);
-                if (data.success) {
-                    alert('Checkpoint created successfully');
-                    location.reload();
-                } else {
-                    alert('Error: ' + data.error);
-                }
-            },
-            error: function() {
-                alert('Error creating checkpoint');
-            }
-        });
-    });
-    
     $('#vt-send-report-btn').on('click', function() {
         const $btn = $(this);
         const originalText = $btn.text();
-        const selectedCheckpointId = $('#vt-checkpoint-selector').val();
         const emailInput = $('#vt-report-email-input').val().trim();
 
         if (!emailInput) {
@@ -124,7 +77,6 @@ jQuery(document).ready(function($) {
             type: 'POST',
             data: {
                 action: versionTrackerAdmin.sendReportAction,
-                checkpoint_id: selectedCheckpointId,
                 recipient_emails: emailInput
             },
             success: function(response) {
@@ -140,32 +92,6 @@ jQuery(document).ready(function($) {
             error: function() {
                 alert('Error sending report');
                 $btn.prop('disabled', false).text(originalText);
-            }
-        });
-    });
-    
-    $('#vt-delete-checkpoint-btn').on('click', function() {
-        if (!confirm('Are you sure you want to delete the last checkpoint?')) {
-            return;
-        }
-        
-        $.ajax({
-            url: versionTrackerAdmin.ajaxurl,
-            type: 'POST',
-            data: {
-                action: versionTrackerAdmin.deleteCheckpointAction
-            },
-            success: function(response) {
-                const data = JSON.parse(response);
-                if (data.success) {
-                    alert('Checkpoint deleted successfully');
-                    location.reload();
-                } else {
-                    alert('Error: ' + data.error);
-                }
-            },
-            error: function() {
-                alert('Error deleting checkpoint');
             }
         });
     });
