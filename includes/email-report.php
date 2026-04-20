@@ -69,7 +69,7 @@ function version_tracker_generate_available_updates_table_html($available_update
 
 function version_tracker_generate_table_html($grouped) {
     if (empty($grouped)) {
-        return '<p>No plugin changes found.</p>';
+        return '<p>No unreported plugin changes found.</p>';
     }
     
     $state_labels = [
@@ -88,15 +88,18 @@ function version_tracker_generate_table_html($grouped) {
             $html .= '<h2>' . esc_html($state_labels[$state]) . '</h2>';
             $html .= '<table>';
             $html .= '<thead><tr>';
+            $html .= '<th class="vt-checkbox-col"><input type="checkbox" class="vt-section-select-all" data-state="' . esc_attr($state) . '"></th>';
             $html .= '<th>Plugin Name</th>';
             $html .= '<th>Version Info</th>';
             $html .= '<th>State</th>';
             $html .= '<th>Changed At</th>';
+            $html .= '<th>Action</th>';
             $html .= '</tr></thead>';
             $html .= '<tbody>';
             
             foreach ($grouped[$state] as $record) {
                 $html .= '<tr class="state-' . esc_attr($state) . '">';
+                $html .= '<td class="vt-checkbox-col"><input type="checkbox" class="vt-record-select" value="' . esc_attr($record->id) . '" data-state="' . esc_attr($state) . '"></td>';
                 $html .= '<td>' . esc_html($record->display_name) . '</td>';
                 $html .= '<td>';
                 
@@ -113,11 +116,15 @@ function version_tracker_generate_table_html($grouped) {
                 $html .= '</td>';
                 $html .= '<td><span class="vt-state-badge state-' . esc_attr($state) . '">' . esc_html(ucfirst($state)) . '</span></td>';
                 $html .= '<td>' . esc_html(date_i18n('Y-m-d H:i:s', strtotime($record->created_at))) . '</td>';
+                $html .= '<td><button type="button" class="button button-small vt-mark-reported-btn" data-record-id="' . esc_attr($record->id) . '">Mark Reported</button></td>';
                 $html .= '</tr>';
             }
             
             $html .= '</tbody>';
             $html .= '</table>';
+            $html .= '<div class="vt-state-actions">';
+            $html .= '<button type="button" class="button button-small vt-mark-selected-btn" data-state="' . esc_attr($state) . '">Mark Selected as Reported</button>';
+            $html .= '</div>';
             $html .= '</div>';
         }
     }
@@ -131,7 +138,7 @@ function version_tracker_generate_report_html() {
     $available_updates = get_plugins_with_available_updates();
     $available_updates_html = version_tracker_generate_available_updates_table_html($available_updates);
     
-    $grouped = version_tracker_get_grouped_plugin_changes();
+    $grouped = version_tracker_get_unreported_plugin_changes();
     $changes_html = version_tracker_generate_table_html($grouped);
     
     return $available_updates_html . $changes_html;
@@ -150,12 +157,16 @@ function version_tracker_send_report_email($recipient_emails) {
         return [
             'success' => false,
             'error' => 'No valid recipient emails provided',
-            'sent_to' => []
+            'sent_to' => [],
+            'record_ids' => []
         ];
     }
     
     $site_name = get_bloginfo('name');
     $subject = sprintf('[%s] Plugin Update Report', $site_name);
+    
+    $grouped = version_tracker_get_unreported_plugin_changes();
+    $record_ids = version_tracker_get_record_ids_from_grouped($grouped);
     
     $report_html = version_tracker_generate_report_html();
     $embedded_styles = version_tracker_get_embedded_styles();
@@ -177,19 +188,35 @@ function version_tracker_send_report_email($recipient_emails) {
     }
     
     if (!empty($sent_to)) {
+        version_tracker_mark_as_reported($record_ids);
+        
         return [
             'success' => true,
             'sent_to' => $sent_to,
-            'failed' => $failed_emails
+            'failed' => $failed_emails,
+            'record_ids' => $record_ids
         ];
     } else {
         return [
             'success' => false,
             'error' => 'Failed to send emails to all recipients',
             'sent_to' => [],
-            'failed' => $failed_emails
+            'failed' => $failed_emails,
+            'record_ids' => []
         ];
     }
+}
+
+function version_tracker_get_record_ids_from_grouped($grouped) {
+    $record_ids = [];
+    
+    foreach ($grouped as $state => $records) {
+        foreach ($records as $record) {
+            $record_ids[] = $record->id;
+        }
+    }
+    
+    return $record_ids;
 }
 
 function version_tracker_build_report_email_body($site_name, $report_html, $embedded_styles) {

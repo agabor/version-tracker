@@ -31,6 +31,27 @@
     margin-right: 5px;
 }
 
+.vt-bulk-actions {
+    margin: 20px 0;
+    padding: 15px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+#vt-mark-all-reported-btn {
+    margin-right: 10px;
+}
+
+.vt-bulk-action-info {
+    color: #666;
+    font-size: 13px;
+    font-style: italic;
+}
+
 .vt-results {
     margin-top: 20px;
 }

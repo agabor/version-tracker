@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Version Tracker
  * Description: Automatically tracks WordPress core, plugin, and theme version changes daily
- * Version: 1.2.1
+ * Version: 2.0.0
  * Author: Gabor Angyal
  * Author URI: https://webshop.tech
  * License: GPL v2 or later
@@ -40,10 +40,12 @@ function activate_version_tracker() {
         display_name varchar(255) NOT NULL,
         old_version varchar(50),
         new_version varchar(50),
+        is_reported tinyint(1) DEFAULT 0,
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY type_slug (type, slug),
-        KEY created_at (created_at)
+        KEY created_at (created_at),
+        KEY is_reported (is_reported)
     ) $charset_collate;";
     
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
@@ -160,9 +162,10 @@ function version_tracker_log_version_change($type, $slug, $display_name, $old_ve
             'display_name' => $display_name,
             'old_version' => $old_version,
             'new_version' => $new_version,
+            'is_reported' => 0,
             'created_at' => current_time('mysql')
         ],
-        ['%s', '%s', '%s', '%s', '%s', '%s']
+        ['%s', '%s', '%s', '%s', '%s', '%d', '%s']
     );
 }
 
@@ -178,12 +181,12 @@ function get_display_state($record) {
     return 'installed';
 }
 
-function version_tracker_get_grouped_plugin_changes() {
+function version_tracker_get_unreported_plugin_changes() {
     global $wpdb;
     
     $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
     
-    $results = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table_name ORDER BY slug, created_at DESC"));
+    $results = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table_name WHERE is_reported = %d ORDER BY slug, created_at DESC", 0));
     
     $grouped = [];
     $seen = [];
@@ -203,6 +206,40 @@ function version_tracker_get_grouped_plugin_changes() {
     }
     
     return $grouped;
+}
+
+function version_tracker_get_grouped_plugin_changes() {
+    return version_tracker_get_unreported_plugin_changes();
+}
+
+function version_tracker_mark_as_reported($record_ids) {
+    if (!is_array($record_ids)) {
+        $record_ids = [$record_ids];
+    }
+    
+    $record_ids = array_map('intval', $record_ids);
+    $record_ids = array_filter($record_ids);
+    
+    if (empty($record_ids)) {
+        return false;
+    }
+    
+    global $wpdb;
+    
+    $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
+    $placeholders = implode(',', array_fill(0, count($record_ids), '%d'));
+    
+    $query = "UPDATE $table_name SET is_reported = 1 WHERE id IN ($placeholders)";
+    
+    return $wpdb->query($wpdb->prepare($query, ...$record_ids)) !== false;
+}
+
+function version_tracker_mark_all_as_reported() {
+    global $wpdb;
+    
+    $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
+    
+    return $wpdb->query("UPDATE $table_name SET is_reported = 1 WHERE is_reported = 0") !== false;
 }
 
 function get_plugins_with_available_updates() {
@@ -283,21 +320,21 @@ function version_tracker_enqueue_admin_assets($hook) {
         'version-tracker-admin',
         plugins_url('css/admin.css', __FILE__),
         [],
-        '1.2.1'
+        '2.0.0'
     );
 
     wp_enqueue_style(
             'version-tracker-table',
             plugins_url('css/table.css', __FILE__),
             [],
-            '1.2.1'
+            '2.0.0'
     );
 
     wp_enqueue_script(
         'version-tracker-admin',
         plugins_url('js/admin.js', __FILE__),
         ['jquery'],
-        '1.2.1',
+        '2.0.0',
         true
     );
     
@@ -325,6 +362,11 @@ function version_tracker_admin_page() {
             <button type="button" id="vt-send-report-btn" class="button button-secondary">Send Report</button>
         </div>
         
+        <div class="vt-bulk-actions">
+            <button type="button" id="vt-mark-all-reported-btn" class="button button-secondary">Mark All as Reported</button>
+            <span class="vt-bulk-action-info">Select rows to mark individual changes as reported</span>
+        </div>
+        
         <div id="vt-versions-container">
             <?php version_tracker_display_plugins(); ?>
         </div>
@@ -336,7 +378,7 @@ function version_tracker_display_plugins() {
     $available_updates = get_plugins_with_available_updates();
     $available_updates_html = version_tracker_generate_available_updates_table_html($available_updates);
     
-    $grouped = version_tracker_get_grouped_plugin_changes();
+    $grouped = version_tracker_get_unreported_plugin_changes();
     $changes_html = version_tracker_generate_table_html($grouped);
     
     echo $available_updates_html;
@@ -386,4 +428,38 @@ add_action('wp_ajax_version_tracker_get_saved_email', function() {
     $emails = version_tracker_get_saved_report_emails_string();
     
     wp_die(json_encode(['email' => $emails]));
+});
+
+add_action('wp_ajax_version_tracker_mark_reported', function() {
+    if (!current_user_can('manage_options')) {
+        wp_die(json_encode(['error' => 'Unauthorized']));
+    }
+    
+    $record_ids = isset($_POST['record_ids']) ? array_map('intval', (array)$_POST['record_ids']) : [];
+    
+    if (empty($record_ids)) {
+        wp_die(json_encode(['error' => 'No records specified']));
+    }
+    
+    $result = version_tracker_mark_as_reported($record_ids);
+    
+    if ($result) {
+        wp_die(json_encode(['success' => true, 'message' => 'Changes marked as reported']));
+    } else {
+        wp_die(json_encode(['error' => 'Failed to mark records as reported']));
+    }
+});
+
+add_action('wp_ajax_version_tracker_mark_all_reported', function() {
+    if (!current_user_can('manage_options')) {
+        wp_die(json_encode(['error' => 'Unauthorized']));
+    }
+    
+    $result = version_tracker_mark_all_as_reported();
+    
+    if ($result) {
+        wp_die(json_encode(['success' => true, 'message' => 'All changes marked as reported']));
+    } else {
+        wp_die(json_encode(['error' => 'Failed to mark all records as reported']));
+    }
 });

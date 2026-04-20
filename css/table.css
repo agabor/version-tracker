@@ -46,6 +46,16 @@ table tbody tr {
     border-bottom: 1px solid #ddd;
 }
 
+.vt-checkbox-col {
+    width: 40px;
+    text-align: center;
+    padding: 10px 5px;
+}
+
+.vt-checkbox-col input[type="checkbox"] {
+    margin: 0;
+}
+
 .vt-state-badge {
     display: inline-block;
     padding: 3px 8px;
@@ -137,4 +147,22 @@ tr.state-available-update {
 .vt-available-version {
     background-color: #ffe8cc;
     color: #d97706;
+}
+
+.vt-mark-reported-btn {
+    font-size: 12px;
+    padding: 4px 8px;
+    height: auto;
+}
+
+.vt-state-actions {
+    margin-top: 10px;
+    padding: 10px 0;
+    border-top: 1px solid #ddd;
+}
+
+.vt-mark-selected-btn {
+    font-size: 12px;
+    padding: 5px 10px;
+    height: auto;
 }
