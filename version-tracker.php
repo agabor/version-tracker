@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Version Tracker
  * Description: Automatically tracks WordPress core, plugin, and theme version changes daily
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: Gabor Angyal
  * Author URI: https://webshop.tech
  * License: GPL v2 or later
@@ -285,6 +285,42 @@ function version_tracker_get_grouped_plugin_changes($checkpoint_id) {
     return $grouped;
 }
 
+function get_plugins_with_available_updates() {
+    if (!function_exists('get_plugins')) {
+        require_once(ABSPATH . 'wp-admin/includes/plugin.php');
+    }
+    
+    if (!function_exists('wp_update_plugins')) {
+        require_once(ABSPATH . 'wp-admin/includes/update.php');
+    }
+    
+    wp_update_plugins();
+    
+    $all_plugins = get_plugins();
+    $updates = get_site_transient('update_plugins');
+    
+    if (!$updates || !isset($updates->response)) {
+        return [];
+    }
+    
+    $plugins_with_updates = [];
+    
+    foreach ($updates->response as $plugin_path => $plugin_data) {
+        if (isset($all_plugins[$plugin_path])) {
+            $plugin_name = $all_plugins[$plugin_path]['Name'];
+            $current_version = $all_plugins[$plugin_path]['Version'];
+            $new_version = $plugin_data->new_version;
+            
+            $plugins_with_updates[$plugin_name] = [
+                'current_version' => $current_version,
+                'available_version' => $new_version
+            ];
+        }
+    }
+    
+    return $plugins_with_updates;
+}
+
 function version_tracker_get_saved_report_emails() {
     $saved_emails = get_option('version_tracker_report_emails');
     
@@ -327,21 +363,21 @@ function version_tracker_enqueue_admin_assets($hook) {
         'version-tracker-admin',
         plugins_url('css/admin.css', __FILE__),
         [],
-        '1.1.0'
+        '1.2.0'
     );
 
     wp_enqueue_style(
             'version-tracker-table',
             plugins_url('css/table.css', __FILE__),
             [],
-            '1.1.0'
+            '1.2.0'
     );
 
     wp_enqueue_script(
         'version-tracker-admin',
         plugins_url('js/admin.js', __FILE__),
         ['jquery'],
-        '1.1.0',
+        '1.2.0',
         true
     );
     
@@ -398,8 +434,14 @@ function version_tracker_admin_page() {
 }
 
 function version_tracker_display_plugins_since_checkpoint($checkpoint_id) {
+    $available_updates = get_plugins_with_available_updates();
+    $available_updates_html = version_tracker_generate_available_updates_table_html($available_updates);
+    
     $grouped = version_tracker_get_grouped_plugin_changes($checkpoint_id);
-    echo version_tracker_generate_table_html($grouped);
+    $changes_html = version_tracker_generate_table_html($grouped);
+    
+    echo $available_updates_html;
+    echo $changes_html;
 }
 
 add_action('wp_ajax_version_tracker_get_versions', function() {
@@ -413,8 +455,13 @@ add_action('wp_ajax_version_tracker_get_versions', function() {
         wp_die(json_encode(['error' => 'Invalid checkpoint ID']));
     }
     
+    $available_updates = get_plugins_with_available_updates();
+    $available_updates_html = version_tracker_generate_available_updates_table_html($available_updates);
+    
     $grouped = version_tracker_get_grouped_plugin_changes($checkpoint_id);
-    $html = version_tracker_generate_table_html($grouped);
+    $changes_html = version_tracker_generate_table_html($grouped);
+    
+    $html = $available_updates_html . $changes_html;
     
     wp_die(json_encode(['html' => $html]));
 });

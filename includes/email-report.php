@@ -33,6 +33,40 @@ function version_tracker_get_embedded_styles() {
     return '';
 }
 
+function version_tracker_generate_available_updates_table_html($available_updates) {
+    if (empty($available_updates)) {
+        return '';
+    }
+    
+    $html = '<div class="vt-available-updates-section">';
+    $html .= '<h2>Not Updated</h2>';
+    $html .= '<table>';
+    $html .= '<thead><tr>';
+    $html .= '<th>Plugin Name</th>';
+    $html .= '<th>Version Info</th>';
+    $html .= '<th>Status</th>';
+    $html .= '</tr></thead>';
+    $html .= '<tbody>';
+    
+    foreach ($available_updates as $plugin_name => $version_info) {
+        $html .= '<tr class="state-available-update">';
+        $html .= '<td>' . esc_html($plugin_name) . '</td>';
+        $html .= '<td>';
+        $html .= '<span class="vt-current-version">' . esc_html($version_info['current_version']) . '</span>';
+        $html .= '<span class="vt-arrow">→</span>';
+        $html .= '<span class="vt-available-version">' . esc_html($version_info['available_version']) . '</span>';
+        $html .= '</td>';
+        $html .= '<td><span class="vt-update-available-badge">Update Available</span></td>';
+        $html .= '</tr>';
+    }
+    
+    $html .= '</tbody>';
+    $html .= '</table>';
+    $html .= '</div>';
+    
+    return $html;
+}
+
 function version_tracker_generate_table_html($grouped) {
     if (empty($grouped)) {
         return '<p>No plugin changes found since selected checkpoint.</p>';
@@ -94,10 +128,13 @@ function version_tracker_generate_table_html($grouped) {
 }
 
 function version_tracker_generate_report_html($checkpoint_id) {
-    $grouped = version_tracker_get_grouped_plugin_changes($checkpoint_id);
-    $table_html = version_tracker_generate_table_html($grouped);
+    $available_updates = get_plugins_with_available_updates();
+    $available_updates_html = version_tracker_generate_available_updates_table_html($available_updates);
     
-    return $table_html;
+    $grouped = version_tracker_get_grouped_plugin_changes($checkpoint_id);
+    $changes_html = version_tracker_generate_table_html($grouped);
+    
+    return $available_updates_html . $changes_html;
 }
 
 function version_tracker_send_report_email($checkpoint_id, $recipient_emails) {

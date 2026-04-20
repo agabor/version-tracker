@@ -9,6 +9,17 @@
     color: #0073aa;
 }
 
+.vt-available-updates-section {
+    margin-bottom: 30px;
+}
+
+.vt-available-updates-section h2 {
+    margin-top: 0;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #ff9800;
+    color: #ff9800;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;
@@ -58,6 +69,16 @@ table tbody tr {
     color: #721c24;
 }
 
+.vt-update-available-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    background-color: #ffe8cc;
+    color: #d97706;
+}
+
 tr.state-installed {
     background-color: #f8f9fa;
 }
@@ -70,9 +91,15 @@ tr.state-deleted {
     background-color: #fff5f5;
 }
 
+tr.state-available-update {
+    background-color: #fffaf0;
+}
+
 .vt-version,
 .vt-old-version,
-.vt-new-version {
+.vt-new-version,
+.vt-current-version,
+.vt-available-version {
     display: inline-block;
     padding: 4px 8px;
     border-radius: 3px;
@@ -91,6 +118,11 @@ tr.state-deleted {
     color: #856404;
 }
 
+.vt-current-version {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
 .vt-arrow {
     margin: 0 6px;
     color: #666;
@@ -100,4 +132,9 @@ tr.state-deleted {
 .vt-new-version {
     background-color: #d4edda;
     color: #155724;
+}
+
+.vt-available-version {
+    background-color: #ffe8cc;
+    color: #d97706;
 }
