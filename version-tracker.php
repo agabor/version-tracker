@@ -48,9 +48,39 @@ function activate_version_tracker() {
     
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
     dbDelta($sql);
+    
+    if (version_tracker_is_table_empty()) {
+        version_tracker_record_initial_plugins();
+    }
 }
 
 function deactivate_version_tracker() {
+}
+
+function version_tracker_is_table_empty() {
+    global $wpdb;
+    
+    $table_name = $wpdb->prefix . VERSION_TRACKER_TABLE;
+    
+    $count = $wpdb->get_var("SELECT COUNT(*) FROM $table_name");
+    
+    return $count === 0 || $count === '0';
+}
+
+function version_tracker_record_initial_plugins() {
+    if (!function_exists('get_plugins')) {
+        require_once(ABSPATH . 'wp-admin/includes/plugin.php');
+    }
+    
+    $all_plugins = get_plugins();
+    
+    foreach ($all_plugins as $plugin_path => $plugin_data) {
+        $plugin_slug = version_tracker_get_plugin_slug($plugin_path);
+        $plugin_name = $plugin_data['Name'];
+        $current_version = $plugin_data['Version'];
+        
+        version_tracker_log_version_change('plugin', $plugin_slug, $plugin_name, null, $current_version);
+    }
 }
 
 function version_tracker_get_plugin_slug($plugin_path) {
