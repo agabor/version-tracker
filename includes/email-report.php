@@ -67,7 +67,7 @@ function version_tracker_generate_available_updates_table_html($available_update
     return $html;
 }
 
-function version_tracker_generate_table_html($grouped) {
+function version_tracker_generate_table_html($grouped, $show_actions = true) {
     if (empty($grouped)) {
         return '<p>No unreported plugin changes found.</p>';
     }
@@ -88,18 +88,30 @@ function version_tracker_generate_table_html($grouped) {
             $html .= '<h2>' . esc_html($state_labels[$state]) . '</h2>';
             $html .= '<table>';
             $html .= '<thead><tr>';
-            $html .= '<th class="vt-checkbox-col"><input type="checkbox" class="vt-section-select-all" data-state="' . esc_attr($state) . '"></th>';
+            
+            if ($show_actions) {
+                $html .= '<th class="vt-checkbox-col"><input type="checkbox" class="vt-section-select-all" data-state="' . esc_attr($state) . '"></th>';
+            }
+            
             $html .= '<th>Plugin Name</th>';
             $html .= '<th>Version Info</th>';
             $html .= '<th>State</th>';
             $html .= '<th>Changed At</th>';
-            $html .= '<th>Action</th>';
+            
+            if ($show_actions) {
+                $html .= '<th>Action</th>';
+            }
+            
             $html .= '</tr></thead>';
             $html .= '<tbody>';
             
             foreach ($grouped[$state] as $record) {
                 $html .= '<tr class="state-' . esc_attr($state) . '">';
-                $html .= '<td class="vt-checkbox-col"><input type="checkbox" class="vt-record-select" value="' . esc_attr($record->id) . '" data-state="' . esc_attr($state) . '"></td>';
+                
+                if ($show_actions) {
+                    $html .= '<td class="vt-checkbox-col"><input type="checkbox" class="vt-record-select" value="' . esc_attr($record->id) . '" data-state="' . esc_attr($state) . '"></td>';
+                }
+                
                 $html .= '<td>' . esc_html($record->display_name) . '</td>';
                 $html .= '<td>';
                 
@@ -116,15 +128,23 @@ function version_tracker_generate_table_html($grouped) {
                 $html .= '</td>';
                 $html .= '<td><span class="vt-state-badge state-' . esc_attr($state) . '">' . esc_html(ucfirst($state)) . '</span></td>';
                 $html .= '<td>' . esc_html(date_i18n('Y-m-d H:i:s', strtotime($record->created_at))) . '</td>';
-                $html .= '<td><button type="button" class="button button-small vt-mark-reported-btn" data-record-id="' . esc_attr($record->id) . '">Mark Reported</button></td>';
+                
+                if ($show_actions) {
+                    $html .= '<td><button type="button" class="button button-small vt-mark-reported-btn" data-record-id="' . esc_attr($record->id) . '">Mark Reported</button></td>';
+                }
+                
                 $html .= '</tr>';
             }
             
             $html .= '</tbody>';
             $html .= '</table>';
-            $html .= '<div class="vt-state-actions">';
-            $html .= '<button type="button" class="button button-small vt-mark-selected-btn" data-state="' . esc_attr($state) . '">Mark Selected as Reported</button>';
-            $html .= '</div>';
+            
+            if ($show_actions) {
+                $html .= '<div class="vt-state-actions">';
+                $html .= '<button type="button" class="button button-small vt-mark-selected-btn" data-state="' . esc_attr($state) . '">Mark Selected as Reported</button>';
+                $html .= '</div>';
+            }
+            
             $html .= '</div>';
         }
     }
@@ -134,12 +154,12 @@ function version_tracker_generate_table_html($grouped) {
     return $html;
 }
 
-function version_tracker_generate_report_html() {
+function version_tracker_generate_report_html($show_actions = true) {
     $available_updates = get_plugins_with_available_updates();
     $available_updates_html = version_tracker_generate_available_updates_table_html($available_updates);
     
     $grouped = version_tracker_get_unreported_plugin_changes();
-    $changes_html = version_tracker_generate_table_html($grouped);
+    $changes_html = version_tracker_generate_table_html($grouped, $show_actions);
     
     return $available_updates_html . $changes_html;
 }
@@ -168,7 +188,7 @@ function version_tracker_send_report_email($recipient_emails) {
     $grouped = version_tracker_get_unreported_plugin_changes();
     $record_ids = version_tracker_get_record_ids_from_grouped($grouped);
     
-    $report_html = version_tracker_generate_report_html();
+    $report_html = version_tracker_generate_report_html(false);
     $embedded_styles = version_tracker_get_embedded_styles();
     
     $message = version_tracker_build_report_email_body($site_name, $report_html, $embedded_styles);
