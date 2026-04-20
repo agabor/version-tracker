@@ -239,6 +239,29 @@ function version_tracker_get_record_ids_from_grouped($grouped) {
     return $record_ids;
 }
 
+function version_tracker_serialize_grouped_changes($grouped) {
+    $serialized = [];
+    
+    foreach ($grouped as $state => $records) {
+        $serialized[$state] = [];
+        
+        foreach ($records as $record) {
+            $serialized[$state][] = [
+                'id' => intval($record->id),
+                'type' => $record->type,
+                'slug' => $record->slug,
+                'display_name' => $record->display_name,
+                'old_version' => $record->old_version,
+                'new_version' => $record->new_version,
+                'created_at' => $record->created_at,
+                'state' => $state
+            ];
+        }
+    }
+    
+    return $serialized;
+}
+
 function version_tracker_build_report_email_body($site_name, $report_html, $embedded_styles) {
     $message = '<!DOCTYPE html>';
     $message .= '<html><head><meta charset="UTF-8"><title>Plugin Update Report</title>';

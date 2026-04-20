@@ -16,6 +16,7 @@ if (!defined('ABSPATH')) {
 }
 
 define('VERSION_TRACKER_TABLE', 'version_tracker');
+define('VERSION_TRACKER_API_KEY', 'VRmBv3VizXMGKk4JhYXE');
 
 require_once(plugin_dir_path(__FILE__) . 'includes/email-report.php');
 
@@ -26,6 +27,7 @@ add_action('upgrader_process_complete', 'version_tracker_handle_plugin_update', 
 add_action('deleted_plugin', 'version_tracker_handle_plugin_deletion', 10, 1);
 add_action('admin_menu', 'version_tracker_add_admin_menu');
 add_action('admin_enqueue_scripts', 'version_tracker_enqueue_admin_assets');
+add_action('rest_api_init', 'version_tracker_register_rest_routes');
 
 function activate_version_tracker() {
     global $wpdb;
@@ -298,6 +300,38 @@ function version_tracker_get_saved_report_emails() {
 function version_tracker_get_saved_report_emails_string() {
     $emails = version_tracker_get_saved_report_emails();
     return implode(', ', $emails);
+}
+
+function version_tracker_register_rest_routes() {
+    register_rest_route('version-tracker/v1', '/changes', [
+        'methods' => 'GET',
+        'callback' => 'version_tracker_rest_get_changes',
+        'permission_callback' => 'version_tracker_check_api_key'
+    ]);
+}
+
+function version_tracker_check_api_key($request) {
+    $api_key = $request->get_header('X-API-Key');
+    
+    if (empty($api_key)) {
+        return new WP_Error('missing_api_key', 'API key is missing', ['status' => 401]);
+    }
+    
+    if ($api_key !== VERSION_TRACKER_API_KEY) {
+        return new WP_Error('invalid_api_key', 'Invalid API key', ['status' => 403]);
+    }
+    
+    return true;
+}
+
+function version_tracker_rest_get_changes($request) {
+    $grouped = version_tracker_get_unreported_plugin_changes();
+    $serialized = version_tracker_serialize_grouped_changes($grouped);
+    
+    return new WP_REST_Response([
+        'success' => true,
+        'data' => $serialized
+    ], 200);
 }
 
 function version_tracker_add_admin_menu() {
